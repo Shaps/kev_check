@@ -1,0 +1,44 @@
+name: Firetruck KEV check
+description: Fail CI when a locked dependency is tied to a CISA Known Exploited Vulnerability.
+author: Firetruck
+branding:
+  icon: alert-triangle
+  color: red
+
+inputs:
+  paths:
+    description: >
+      Newline-separated lockfiles, SBOMs (CycloneDX or SPDX JSON), or glob patterns to scan.
+      Leave empty to auto-detect supported lockfiles and SBOMs in the workspace.
+    required: false
+    default: ''
+  api-key:
+    description: Firetruck API key. Optional; raises the rate limit above the anonymous per-IP default.
+    required: false
+    default: ''
+  api-url:
+    description: Base URL of the Firetruck API.
+    required: false
+    default: https://api.firetruck.dev
+  fail-on-kev:
+    description: Fail the step when any dependency matches a KEV.
+    required: false
+    default: 'true'
+  concurrency:
+    description: Maximum number of lookups in flight at once.
+    required: false
+    default: '8'
+
+outputs:
+  findings:
+    description: JSON array of vulnerable dependencies, each with name, version, ecosystem, files, and kevs.
+  kev-count:
+    description: Number of distinct KEV CVE IDs found.
+  vulnerable-count:
+    description: Number of distinct dependencies (name and version) that matched a KEV.
+  checked-count:
+    description: Number of distinct dependencies (name and version) looked up.
+
+runs:
+  using: node24
+  main: dist/index.js

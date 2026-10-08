@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run all
+      - name: dist is up to date
+        run: git diff --exit-code -- dist/
+
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - id: clean
+        uses: ./
+        with:
+          paths: test/fixtures/clean/package-lock.json
+      - id: vulnerable
+        uses: ./
+        continue-on-error: true
+        with:
+          paths: test/fixtures/vulnerable/package-lock.json
+      - name: outputs match expectations
+        env:
+          CLEAN_COUNT: ${{ steps.clean.outputs.vulnerable-count }}
+          VULNERABLE_OUTCOME: ${{ steps.vulnerable.outcome }}
+          VULNERABLE_KEVS: ${{ steps.vulnerable.outputs.kev-count }}
+        run: |
+          test "$CLEAN_COUNT" = 0
+          test "$VULNERABLE_OUTCOME" = failure
+          test "$VULNERABLE_KEVS" -ge 1

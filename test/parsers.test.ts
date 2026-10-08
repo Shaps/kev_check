@@ -1,0 +1,279 @@
+import { describe, expect, it } from 'vitest';
+import { parseBunLock, parsePackageLock, parsePnpmLock, parseYarnLock } from '../src/parsers/npm.ts';
+import {
+  parseCargoLock,
+  parseComposerLock,
+  parseGemfileLock,
+  parseGoMod,
+  parsePipfileLock,
+  parsePythonTomlLock,
+  parseRequirements,
+} from '../src/parsers/others.ts';
+import { fromPurl, parseSbom } from '../src/parsers/sbom.ts';
+import { parserFor } from '../src/parsers/index.ts';
+
+const pairs = (deps: { name: string; version: string }[]) => deps.map((d) => `${d.name}@${d.version}`);
+
+describe('npm', () => {
+  it('reads package-lock v3 packages, including nested and scoped, skipping root and links', () => {
+    const lock = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'app', version: '1.0.0' },
+        'node_modules/jquery': { version: '3.7.1' },
+        'node_modules/@babel/core': { version: '7.24.0' },
+        'node_modules/a/node_modules/jquery': { version: '1.12.4' },
+        'node_modules/local': { link: true, resolved: 'packages/local' },
+        'packages/local': { version: '0.0.1' },
+      },
+    });
+    expect(pairs(parsePackageLock(lock))).toEqual(['jquery@3.7.1', '@babel/core@7.24.0', 'jquery@1.12.4']);
+  });
+
+  it('reads package-lock v1 nested dependencies', () => {
+    const lock = JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        lodash: { version: '4.17.20', dependencies: { minimist: { version: '1.2.5' } } },
+        local: { version: 'file:../local' },
+      },
+    });
+    expect(pairs(parsePackageLock(lock))).toEqual(['lodash@4.17.20', 'minimist@1.2.5']);
+  });
+
+  it('reads pnpm v9, v6 and v5 keys, dropping peer suffixes', () => {
+    const lock = `lockfileVersion: '9.0'
+packages:
+  '@babel/core@7.24.0':
+    resolution: {integrity: x}
+  react-dom@18.2.0(react@18.2.0):
+    resolution: {integrity: x}
+  /lodash@4.17.21:
+    resolution: {integrity: x}
+  /@types/node/20.1.0:
+    resolution: {integrity: x}
+`;
+    expect(pairs(parsePnpmLock(lock))).toEqual([
+      '@babel/core@7.24.0',
+      'react-dom@18.2.0',
+      'lodash@4.17.21',
+      '@types/node@20.1.0',
+    ]);
+  });
+
+  it('reads yarn classic', () => {
+    const lock = `# yarn lockfile v1
+
+
+"@babel/core@^7.0.0", "@babel/core@^7.1.0":
+  version "7.24.0"
+  resolved "https://registry.yarnpkg.com/x"
+
+jquery@^3.0.0:
+  version "3.7.1"
+`;
+    expect(pairs(parseYarnLock(lock))).toEqual(['@babel/core@7.24.0', 'jquery@3.7.1']);
+  });
+
+  it('reads yarn berry, skipping metadata and workspaces', () => {
+    const lock = `__metadata:
+  version: 8
+  cacheKey: 10
+
+"app@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "app@workspace:."
+
+"jquery@npm:^3.0.0":
+  version: 3.7.1
+  resolution: "jquery@npm:3.7.1"
+`;
+    expect(pairs(parseYarnLock(lock))).toEqual(['jquery@3.7.1']);
+  });
+});
+
+describe('bun.lock', () => {
+  it('reads resolved packages despite trailing commas, skipping workspace links', () => {
+    const lock = `{
+  "lockfileVersion": 1,
+  "workspaces": { "": { "name": "app", "dependencies": { "next": "16.2.12", }, }, },
+  "packages": {
+    "@babel/core": ["@babel/core@7.29.7", "", { "dependencies": { "x": "^1", }, }, "sha512-a"],
+
+    "next": ["next@16.2.12", "", {}, "sha512-b"],
+
+    "shared": ["shared@workspace:packages/shared"],
+  },
+}
+`;
+    expect(pairs(parseBunLock(lock))).toEqual(['@babel/core@7.29.7', 'next@16.2.12']);
+  });
+});
+
+describe('go.mod', () => {
+  it('reads block and single-line requires, ignoring comments and replace', () => {
+    const mod = `module example.com/app
+
+go 1.22
+
+require github.com/gin-gonic/gin v1.9.1
+
+require (
+	golang.org/x/net v0.17.0 // indirect
+	// github.com/commented/out v1.0.0
+	github.com/hashicorp/go-version v1.6.0
+)
+
+replace github.com/foo/bar => ../bar
+`;
+    expect(pairs(parseGoMod(mod))).toEqual([
+      'github.com/gin-gonic/gin@v1.9.1',
+      'golang.org/x/net@v0.17.0',
+      'github.com/hashicorp/go-version@v1.6.0',
+    ]);
+  });
+});
+
+describe('python', () => {
+  it('keeps only exact pins from requirements.txt', () => {
+    const reqs = `# comment
+Django==4.2.1
+requests[security] == 2.31.0 ; python_version > "3.8"
+PyYAML>=6.0
+flask
+-r other.txt
+urllib3==1.26.5 --hash=sha256:abc
+Jinja2===3.1.2  # trailing comment
+`;
+    expect(pairs(parseRequirements(reqs))).toEqual(['django@4.2.1', 'requests@2.31.0', 'jinja2@3.1.2']);
+  });
+
+  it('reads Pipfile.lock pins from default and develop', () => {
+    const lock = JSON.stringify({
+      default: { Django: { version: '==4.2.1' }, local: { path: '.' } },
+      develop: { pytest: { version: '==8.0.0' } },
+    });
+    expect(pairs(parsePipfileLock(lock))).toEqual(['django@4.2.1', 'pytest@8.0.0']);
+  });
+
+  it('reads poetry.lock and uv.lock, skipping the local project', () => {
+    const lock = `version = 1
+
+[[package]]
+name = "app"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "Django"
+version = "4.2.1"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "typing_extensions"
+version = "4.9.0"
+`;
+    expect(pairs(parsePythonTomlLock(lock))).toEqual(['django@4.2.1', 'typing-extensions@4.9.0']);
+  });
+});
+
+describe('other ecosystems', () => {
+  it('reads Cargo.lock, skipping workspace crates', () => {
+    const lock = `version = 3
+
+[[package]]
+name = "app"
+version = "0.1.0"
+
+[[package]]
+name = "openssl"
+version = "0.10.55"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`;
+    expect(pairs(parseCargoLock(lock))).toEqual(['openssl@0.10.55']);
+  });
+
+  it('reads Gemfile.lock GEM specs, stripping platforms and ignoring nested constraints', () => {
+    const lock = `GIT
+  remote: https://github.com/x/y.git
+  specs:
+    y (1.0.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    actionpack (7.0.4)
+      rack (~> 2.0)
+    nokogiri (1.15.4-x86_64-linux)
+    rack (2.2.6)
+
+PLATFORMS
+  x86_64-linux
+`;
+    expect(pairs(parseGemfileLock(lock))).toEqual(['actionpack@7.0.4', 'nokogiri@1.15.4', 'rack@2.2.6']);
+  });
+
+  it('reads composer.lock, stripping v prefixes and skipping dev branches', () => {
+    const lock = JSON.stringify({
+      packages: [{ name: 'laravel/framework', version: 'v10.0.0' }, { name: 'x/y', version: 'dev-main' }],
+      'packages-dev': [{ name: 'phpunit/phpunit', version: '10.1.0' }],
+    });
+    expect(pairs(parseComposerLock(lock))).toEqual(['laravel/framework@10.0.0', 'phpunit/phpunit@10.1.0']);
+  });
+});
+
+describe('sbom', () => {
+  it('maps purls to ecosystem-native names', () => {
+    expect(fromPurl('pkg:npm/%40babel/core@7.24.0')).toEqual({ ecosystem: 'npm', name: '@babel/core', version: '7.24.0' });
+    expect(fromPurl('pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1?type=jar')).toEqual({
+      ecosystem: 'maven',
+      name: 'org.apache.logging.log4j:log4j-core',
+      version: '2.14.1',
+    });
+    expect(fromPurl('pkg:golang/github.com/gin-gonic/gin@v1.9.1')).toEqual({
+      ecosystem: 'golang',
+      name: 'github.com/gin-gonic/gin',
+      version: 'v1.9.1',
+    });
+    expect(fromPurl('pkg:deb/debian/openssl@3.0.11-1')).toEqual({ ecosystem: 'generic', name: 'openssl', version: '3.0.11-1' });
+    expect(fromPurl('pkg:npm/unversioned')).toBeUndefined();
+  });
+
+  it('reads nested CycloneDX components, falling back to group:name', () => {
+    const bom = JSON.stringify({
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        { name: 'jquery', version: '3.7.1', purl: 'pkg:npm/jquery@3.7.1' },
+        { group: 'org.example', name: 'lib', version: '1.0', components: [{ name: 'inner', version: '2.0' }] },
+        { name: 'no-version' },
+      ],
+    });
+    expect(pairs(parseSbom(bom))).toEqual(['jquery@3.7.1', 'org.example:lib@1.0', 'inner@2.0']);
+  });
+
+  it('reads SPDX packages, skipping the described root', () => {
+    const bom = JSON.stringify({
+      spdxVersion: 'SPDX-2.3',
+      documentDescribes: ['SPDXRef-root'],
+      packages: [
+        { SPDXID: 'SPDXRef-root', name: 'app', versionInfo: '1.0.0' },
+        {
+          SPDXID: 'SPDXRef-1',
+          name: 'log4j-core',
+          versionInfo: '2.14.1',
+          externalRefs: [{ referenceType: 'purl', referenceLocator: 'pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1' }],
+        },
+        { SPDXID: 'SPDXRef-2', name: 'zlib', versionInfo: '1.2.13' },
+      ],
+    });
+    expect(pairs(parseSbom(bom))).toEqual(['org.apache.logging.log4j:log4j-core@2.14.1', 'zlib@1.2.13']);
+  });
+
+  it('detects SBOMs by content only for JSON files without a known lockfile name', () => {
+    const bom = JSON.stringify({ bomFormat: 'CycloneDX', components: [] });
+    expect(parserFor('out/sbom.json', bom)).toBe(parseSbom);
+    expect(parserFor('out/other.json', '{"a":1}')).toBeUndefined();
+    expect(parserFor('requirements-dev.txt', '')).toBe(parseRequirements);
+  });
+});
