@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BATCH_SIZE, createClient, FiretruckError, lookupAll, mapConcurrent } from '../src/client.ts';
 import type { Dependency } from '../src/types.ts';
+import { VERSION } from '../src/version.ts';
 
 const dep: Dependency = { ecosystem: 'npm', name: 'jquery', version: '3.7.1' };
 const clean = { verdict: 'no', kevs: [], matches: [] };
@@ -37,6 +38,17 @@ describe('createClient', () => {
     const { fetch, sleep } = setup(batch(clean));
     await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]);
     expect(fetch.mock.calls[0]![1]!.headers).not.toHaveProperty('X-API-Key');
+  });
+
+  it('identifies itself with the action version and the pinned ref', async () => {
+    vi.stubEnv('GITHUB_ACTION_REF', 'v0.1.0');
+    try {
+      const { fetch, sleep } = setup(batch(clean));
+      await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]);
+      expect((fetch.mock.calls[0]![1]!.headers as Record<string, string>)['User-Agent']).toBe(`firetruck-action/${VERSION} (v0.1.0)`);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('maps results back to dependencies by request order', async () => {

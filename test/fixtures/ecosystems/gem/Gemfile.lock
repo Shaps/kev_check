@@ -1,0 +1,10 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    actionview (5.2.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  actionview

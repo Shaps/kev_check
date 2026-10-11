@@ -13,13 +13,9 @@ inputs:
     required: false
     default: ''
   api-key:
-    description: Firetruck API key. Optional; raises the rate limit above the anonymous per-IP default.
+    description: Firetruck API key. Optional.
     required: false
     default: ''
-  api-url:
-    description: Base URL of the Firetruck API.
-    required: false
-    default: https://api.firetruck.dev
   fail-on-kev:
     description: >
       Fail the step when a dependency is affected by a KEV (verdict "yes"). Unverified dependencies

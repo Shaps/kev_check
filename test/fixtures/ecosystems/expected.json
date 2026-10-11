@@ -1,0 +1,10 @@
+[
+  { "file": "npm/package-lock.json", "ecosystem": "npm", "name": "jquery", "version": "1.12.4", "kev": "CVE-2020-11023" },
+  { "file": "pypi/requirements.txt", "ecosystem": "pypi", "name": "apache-superset", "version": "2.0.1", "kev": "CVE-2023-27524" },
+  { "file": "golang/go.mod", "ecosystem": "golang", "name": "github.com/grafana/grafana", "version": "v7.5.10+incompatible", "kev": "CVE-2021-39226" },
+  { "file": "gem/Gemfile.lock", "ecosystem": "gem", "name": "actionview", "version": "5.2.2", "kev": "CVE-2019-5418" },
+  { "file": "cargo/Cargo.lock", "ecosystem": "cargo", "name": "libwebp-sys", "version": "0.9.2", "kev": "CVE-2023-4863" },
+  { "file": "composer/composer.lock", "ecosystem": "composer", "name": "drupal/core", "version": "8.3.8", "kev": "CVE-2018-7600" },
+  { "file": "sbom/sbom.cdx.json", "ecosystem": "maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "kev": "CVE-2021-44228" },
+  { "file": "sbom/sbom.cdx.json", "ecosystem": "nuget", "name": "CefSharp.Common", "version": "85.3.130", "kev": "CVE-2020-16017" }
+]

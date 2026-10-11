@@ -15,7 +15,6 @@ vi.mock('@actions/core', async (importOriginal) => {
 const inputs = (overrides: Partial<Inputs> = {}): Inputs => ({
   paths: [],
   apiKey: '',
-  apiUrl: 'https://api.example.test',
   failOnKev: true,
   concurrency: 4,
   ...overrides,

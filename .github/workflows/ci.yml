@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  FIRETRUCK_API_KEY: ${{ secrets.FIRETRUCK_API_KEY }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,25 +25,115 @@ jobs:
       - name: dist is up to date
         run: git diff --exit-code -- dist/
 
-  self-test:
+  # Separates "the API is down or changed its contract" from "the action is broken".
+  api-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: batch endpoint answers with verdicts
+        run: |
+          set -euo pipefail
+          key=()
+          if [ -n "${FIRETRUCK_API_KEY:-}" ]; then key=(-H "X-API-Key: $FIRETRUCK_API_KEY"); fi
+          body='{"packages":[
+            {"ecosystem":"maven","name":"org.apache.logging.log4j:log4j-core","version":"2.14.1"},
+            {"ecosystem":"npm","name":"lodash","version":"4.17.21"},
+            {"ecosystem":"deb","name":"openssl","version":"3.0.11"}]}'
+          status=$(curl -sS -o response.json -w '%{http_code}' --retry 3 --retry-all-errors \
+            -X POST https://api.firetruck.dev/v1/packages/kevs/batch \
+            -H 'Content-Type: application/json' "${key[@]}" -d "$body")
+          cat response.json; echo
+          test "$status" = 200
+          jq -e '
+            (.results | length) == 3
+            and (.results[0].verdict == "yes" and (.results[0].kevs | contains(["CVE-2021-44228"])))
+            and (.results[1].verdict == "no")
+            and (.results[2].error.code == "VALIDATION_ERROR")' response.json
+
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: echo "matrix=$(jq -c . test/fixtures/ecosystems/expected.json)" >> "$GITHUB_OUTPUT"
+
+  # One live run per ecosystem: the fixture holds a package version with a known KEV.
+  ecosystems:
+    needs: [api-contract, plan]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: ${{ matrix.ecosystem }} (${{ matrix.file }})
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: scan
+        uses: ./
+        with:
+          paths: test/fixtures/ecosystems/${{ matrix.file }}
+          api-key: ${{ secrets.FIRETRUCK_API_KEY }}
+          fail-on-kev: false
+      - name: finds the expected KEV
+        env:
+          FINDINGS: ${{ steps.scan.outputs.findings }}
+          ECOSYSTEM: ${{ matrix.ecosystem }}
+          NAME: ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+          KEV: ${{ matrix.kev }}
+        run: |
+          echo "$FINDINGS" | jq .
+          echo "$FINDINGS" | jq -e --arg e "$ECOSYSTEM" --arg n "$NAME" --arg v "$VERSION" --arg k "$KEV" \
+            'any(.[]; .ecosystem == $e and .name == $n and .version == $v and .verdict == "yes" and (.kevs | contains([$k])))'
+
+  behaviour:
+    needs: api-contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - id: clean
         uses: ./
         with:
           paths: test/fixtures/clean/package-lock.json
+          api-key: ${{ secrets.FIRETRUCK_API_KEY }}
       - id: vulnerable
         uses: ./
         continue-on-error: true
         with:
           paths: test/fixtures/vulnerable/package-lock.json
+          api-key: ${{ secrets.FIRETRUCK_API_KEY }}
+      - id: unchecked
+        uses: ./
+        with:
+          paths: test/fixtures/ecosystems/sbom/sbom.cdx.json
+          api-key: ${{ secrets.FIRETRUCK_API_KEY }}
+          fail-on-kev: false
       - name: outputs match expectations
         env:
-          CLEAN_COUNT: ${{ steps.clean.outputs.vulnerable-count }}
+          CLEAN_VULNERABLE: ${{ steps.clean.outputs.vulnerable-count }}
+          CLEAN_CHECKED: ${{ steps.clean.outputs.checked-count }}
           VULNERABLE_OUTCOME: ${{ steps.vulnerable.outcome }}
           VULNERABLE_KEVS: ${{ steps.vulnerable.outputs.kev-count }}
+          VULNERABLE_COUNT: ${{ steps.vulnerable.outputs.vulnerable-count }}
+          UNCHECKED_OUTCOME: ${{ steps.unchecked.outcome }}
+          UNCHECKED_COUNT: ${{ steps.unchecked.outputs.unchecked-count }}
+          UNCHECKED_CHECKED: ${{ steps.unchecked.outputs.checked-count }}
         run: |
-          test "$CLEAN_COUNT" = 0
+          # a clean lockfile passes and is counted as checked
+          test "$CLEAN_VULNERABLE" = 0
+          test "$CLEAN_CHECKED" = 1
+          # a yes verdict fails the step by default
           test "$VULNERABLE_OUTCOME" = failure
+          test "$VULNERABLE_COUNT" = 1
           test "$VULNERABLE_KEVS" -ge 1
+          # purl-less and unsupported SBOM components are unchecked, and fail-on-kev=false keeps the step green
+          test "$UNCHECKED_OUTCOME" = success
+          test "$UNCHECKED_COUNT" = 2
+          test "$UNCHECKED_CHECKED" = 2

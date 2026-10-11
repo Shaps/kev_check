@@ -1,0 +1,10 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "components": [
+    { "name": "log4j-core", "group": "org.apache.logging.log4j", "version": "2.14.1", "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1" },
+    { "name": "CefSharp.Common", "version": "85.3.130", "purl": "pkg:nuget/CefSharp.Common@85.3.130" },
+    { "name": "no-purl", "version": "1.0.0" },
+    { "name": "openssl", "version": "3.0.11-1", "purl": "pkg:deb/debian/openssl@3.0.11-1" }
+  ]
+}
