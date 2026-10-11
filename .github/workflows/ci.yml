@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs these same jobs, live API included, as its gate.
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,8 +17,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -54,7 +56,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - id: matrix
@@ -70,7 +72,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: ${{ matrix.ecosystem }} (${{ matrix.file }})
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - id: scan
@@ -95,7 +97,7 @@ jobs:
     needs: api-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - id: clean
@@ -137,3 +139,18 @@ jobs:
           test "$UNCHECKED_OUTCOME" = success
           test "$UNCHECKED_COUNT" = 2
           test "$UNCHECKED_CHECKED" = 2
+
+  # The action scans its own lockfile, built from the code under review. A dependency tied to a
+  # known exploited vulnerability fails the pull request. Only package-lock.json is scanned: the
+  # fixtures under test/ hold vulnerable versions on purpose.
+  dependencies:
+    needs: api-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./
+        with:
+          paths: package-lock.json
+          api-key: ${{ secrets.FIRETRUCK_API_KEY }}
