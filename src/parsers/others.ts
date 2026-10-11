@@ -20,7 +20,7 @@ export function parseGoMod(content: string): Dependency[] {
 }
 
 /** PEP 503 normalization, so `Django_REST.framework` and `django-rest-framework` compare equal. */
-const pypiName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
+export const pypiName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
 
 /** Only exact pins (`==`) resolve to one version; ranges are skipped rather than guessed. */
 export function parseRequirements(content: string): Dependency[] {
@@ -77,7 +77,7 @@ export function parseGemfileLock(content: string): Dependency[] {
     const match = section === 'GEM' && line.match(/^ {4}([^\s(]+) \(([^)\s]+)\)$/);
     if (match) {
       const version = match[2]!.replace(/-(x86|x64|arm|aarch|universal|java|mingw|mswin|darwin|linux).*$/, '');
-      deps.push({ ecosystem: 'rubygems', name: match[1]!, version });
+      deps.push({ ecosystem: 'gem', name: match[1]!, version });
     }
   }
   return deps;
@@ -97,7 +97,7 @@ export const ecosystemFromPurlType: Record<string, Ecosystem> = {
   golang: 'golang',
   pypi: 'pypi',
   cargo: 'cargo',
-  gem: 'rubygems',
+  gem: 'gem',
   composer: 'composer',
   maven: 'maven',
   nuget: 'nuget',

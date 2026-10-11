@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import * as glob from '@actions/glob';
 import { autoDetectPatterns, parserFor } from './parsers/index.ts';
-import type { Dependency, InventoryEntry } from './types.ts';
+import { isUnchecked, type InventoryEntry, type ParsedDependency, type UncheckedEntry } from './types.ts';
 
 const excluded = ['!**/node_modules/**', '!**/vendor/**', '!**/.git/**'];
 
@@ -14,7 +14,7 @@ export async function findFiles(paths: string[]): Promise<string[]> {
 
 export interface ParsedFile {
   file: string;
-  dependencies: Dependency[];
+  dependencies: ParsedDependency[];
 }
 
 export interface Skipped {
@@ -44,18 +44,20 @@ export async function parseFiles(files: string[], root: string): Promise<{ parse
 }
 
 /**
- * The API matches on name and version only, so the same name@version from two ecosystems is
- * one lookup. The first ecosystem seen is kept for display.
+ * Dependencies are distinct by ecosystem, name and version: the same name@version in two
+ * ecosystems is two lookups. Ones that cannot be looked up are listed separately.
  */
-export function buildInventory(parsed: ParsedFile[]): InventoryEntry[] {
-  const byKey = new Map<string, InventoryEntry>();
+export function buildInventory(parsed: ParsedFile[]): { inventory: InventoryEntry[]; unchecked: UncheckedEntry[] } {
+  const inventory = new Map<string, InventoryEntry>();
+  const unchecked = new Map<string, UncheckedEntry>();
   for (const { file, dependencies } of parsed) {
     for (const dependency of dependencies) {
-      const key = `${dependency.name.toLowerCase()}@${dependency.version}`;
-      const entry = byKey.get(key) ?? { dependency, files: [] };
+      const key = `${dependency.ecosystem}:${dependency.name.toLowerCase()}@${dependency.version}`;
+      const entries = (isUnchecked(dependency) ? unchecked : inventory) as Map<string, InventoryEntry<typeof dependency>>;
+      const entry = entries.get(key) ?? { dependency, files: [] };
       if (!entry.files.includes(file)) entry.files.push(file);
-      byKey.set(key, entry);
+      entries.set(key, entry);
     }
   }
-  return [...byKey.values()];
+  return { inventory: [...inventory.values()], unchecked: [...unchecked.values()] };
 }

@@ -1,5 +1,5 @@
 name: Firetruck KEV check
-description: Fail CI when a locked dependency is tied to a CISA Known Exploited Vulnerability.
+description: Fail CI when a locked dependency is affected by a CISA Known Exploited Vulnerability.
 author: Firetruck
 branding:
   icon: alert-triangle
@@ -21,23 +21,35 @@ inputs:
     required: false
     default: https://api.firetruck.dev
   fail-on-kev:
-    description: Fail the step when any dependency matches a KEV.
+    description: >
+      Fail the step when a dependency is affected by a KEV (verdict "yes"). Unverified dependencies
+      only warn and never fail the step.
     required: false
     default: 'true'
   concurrency:
-    description: Maximum number of lookups in flight at once.
+    description: Maximum number of batch requests (up to 100 dependencies each) in flight at once.
     required: false
     default: '8'
 
 outputs:
   findings:
-    description: JSON array of vulnerable dependencies, each with name, version, ecosystem, files, and kevs.
+    description: >
+      JSON array with one entry per dependency whose verdict is "yes" (a KEV affects this version)
+      or "unverified" (a linked KEV could not be compared), confirmed findings first. Each entry has
+      ecosystem, name, version, verdict, files, kevs (confirmed KEV CVE IDs, empty when unverified),
+      and unverifiedKevs (linked KEV CVE IDs that could not be compared).
   kev-count:
-    description: Number of distinct KEV CVE IDs found.
+    description: Number of distinct KEV CVE IDs confirmed to affect a dependency (verdict "yes").
   vulnerable-count:
-    description: Number of distinct dependencies (name and version) that matched a KEV.
+    description: Number of distinct dependencies (ecosystem, name and version) with verdict "yes".
+  unverified-count:
+    description: Number of distinct dependencies with verdict "unverified".
+  unchecked-count:
+    description: >
+      Number of distinct dependencies that were not checked, either because their ecosystem is not
+      supported or because the API rejected the entry.
   checked-count:
-    description: Number of distinct dependencies (name and version) looked up.
+    description: Number of distinct dependencies (ecosystem, name and version) that received a verdict.
 
 runs:
   using: node24
