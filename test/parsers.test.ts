@@ -211,6 +211,7 @@ PLATFORMS
   x86_64-linux
 `;
     expect(pairs(parseGemfileLock(lock))).toEqual(['actionpack@7.0.4', 'nokogiri@1.15.4', 'rack@2.2.6']);
+    expect(new Set(parseGemfileLock(lock).map((d) => d.ecosystem))).toEqual(new Set(['gem']));
   });
 
   it('reads composer.lock, stripping v prefixes and skipping dev branches', () => {
@@ -235,11 +236,33 @@ describe('sbom', () => {
       name: 'github.com/gin-gonic/gin',
       version: 'v1.9.1',
     });
-    expect(fromPurl('pkg:deb/debian/openssl@3.0.11-1')).toEqual({ ecosystem: 'generic', name: 'openssl', version: '3.0.11-1' });
+    expect(fromPurl('pkg:npm/@babel/core@7.24.0')).toEqual({ ecosystem: 'npm', name: '@babel/core', version: '7.24.0' });
+    expect(fromPurl('pkg:gem/rails@7.0.0')).toEqual({ ecosystem: 'gem', name: 'rails', version: '7.0.0' });
+    expect(fromPurl('pkg:composer/laravel/framework@10.0.0')).toEqual({ ecosystem: 'composer', name: 'laravel/framework', version: '10.0.0' });
+    expect(fromPurl('pkg:nuget/Newtonsoft.Json@13.0.1')).toEqual({ ecosystem: 'nuget', name: 'Newtonsoft.Json', version: '13.0.1' });
+    expect(fromPurl('pkg:cargo/serde@1.0.0')).toEqual({ ecosystem: 'cargo', name: 'serde', version: '1.0.0' });
+    expect(fromPurl('pkg:pypi/Django_REST.framework@3.14.0')).toEqual({ ecosystem: 'pypi', name: 'django-rest-framework', version: '3.14.0' });
     expect(fromPurl('pkg:npm/unversioned')).toBeUndefined();
+    expect(fromPurl('pkg:npm/@babel/core')).toBeUndefined();
   });
 
-  it('reads nested CycloneDX components, falling back to group:name', () => {
+  it('marks purl types outside the eight supported ecosystems as unchecked instead of guessing a name', () => {
+    expect(fromPurl('pkg:deb/debian/openssl@3.0.11-1')).toEqual({
+      ecosystem: 'deb',
+      name: 'debian/openssl',
+      version: '3.0.11-1',
+      reason: 'ecosystem not supported (purl type "deb")',
+    });
+    expect(fromPurl('pkg:generic/zlib@1.2.13')).toMatchObject({ ecosystem: 'generic', name: 'zlib', reason: expect.stringContaining('not supported') });
+    expect(fromPurl('pkg:github/org/repo@v1')).toMatchObject({ ecosystem: 'github', reason: expect.stringContaining('not supported') });
+  });
+
+  it('marks a Maven purl without a group, or with bad encoding, as unchecked', () => {
+    expect(fromPurl('pkg:maven/log4j-core@2.14.1')).toMatchObject({ ecosystem: 'maven', reason: expect.stringContaining('group') });
+    expect(fromPurl('pkg:npm/bad%ZZ@1.0.0')).toMatchObject({ ecosystem: 'npm', reason: 'invalid package URL encoding' });
+  });
+
+  it('reads nested CycloneDX components; ones without a purl are unchecked', () => {
     const bom = JSON.stringify({
       bomFormat: 'CycloneDX',
       specVersion: '1.5',
@@ -249,10 +272,16 @@ describe('sbom', () => {
         { name: 'no-version' },
       ],
     });
-    expect(pairs(parseSbom(bom))).toEqual(['jquery@3.7.1', 'org.example:lib@1.0', 'inner@2.0']);
+    const deps = parseSbom(bom);
+    expect(pairs(deps)).toEqual(['jquery@3.7.1', 'org.example:lib@1.0', 'inner@2.0']);
+    expect(deps[0]).toEqual({ ecosystem: 'npm', name: 'jquery', version: '3.7.1' });
+    expect(deps.slice(1)).toEqual([
+      { ecosystem: 'unknown', name: 'org.example:lib', version: '1.0', reason: expect.stringContaining('no package URL') },
+      { ecosystem: 'unknown', name: 'inner', version: '2.0', reason: expect.stringContaining('no package URL') },
+    ]);
   });
 
-  it('reads SPDX packages, skipping the described root', () => {
+  it('reads SPDX packages, skipping the described root; ones without a purl are unchecked', () => {
     const bom = JSON.stringify({
       spdxVersion: 'SPDX-2.3',
       documentDescribes: ['SPDXRef-root'],
@@ -267,7 +296,10 @@ describe('sbom', () => {
         { SPDXID: 'SPDXRef-2', name: 'zlib', versionInfo: '1.2.13' },
       ],
     });
-    expect(pairs(parseSbom(bom))).toEqual(['org.apache.logging.log4j:log4j-core@2.14.1', 'zlib@1.2.13']);
+    const deps = parseSbom(bom);
+    expect(pairs(deps)).toEqual(['org.apache.logging.log4j:log4j-core@2.14.1', 'zlib@1.2.13']);
+    expect(deps[0]).toMatchObject({ ecosystem: 'maven' });
+    expect(deps[1]).toMatchObject({ ecosystem: 'unknown', reason: expect.stringContaining('no package URL') });
   });
 
   it('detects SBOMs by content only for JSON files without a known lockfile name', () => {

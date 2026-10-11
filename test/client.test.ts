@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClient, FiretruckError, mapConcurrent } from '../src/client.ts';
+import { BATCH_SIZE, createClient, FiretruckError, lookupAll, mapConcurrent } from '../src/client.ts';
 import type { Dependency } from '../src/types.ts';
 
 const dep: Dependency = { ecosystem: 'npm', name: 'jquery', version: '3.7.1' };
+const clean = { verdict: 'no', kevs: [], matches: [] };
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+const batch = (...results: unknown[]) => json(200, { results });
 
 function setup(...responses: (Response | Error)[]) {
-  const fetch = vi.fn(async () => {
+  const fetch = vi.fn(async (_url: RequestInfo | URL, _init: RequestInit = {}) => {
     const next = responses.shift();
     if (!next) throw new Error('no more responses');
     if (next instanceof Error) throw next;
@@ -17,58 +19,192 @@ function setup(...responses: (Response | Error)[]) {
   return { fetch, sleep };
 }
 
+const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string) as { packages: Dependency[] };
+
 describe('createClient', () => {
-  it('posts name and version with the API key and returns KEV IDs', async () => {
-    const { fetch, sleep } = setup(json(200, { name: 'jquery', version: '3.7.1', kevs: ['CVE-2020-11023'] }));
+  it('posts ecosystem, name and version to the batch endpoint with the API key', async () => {
+    const { fetch, sleep } = setup(batch({ ecosystem: 'npm', name: 'jquery', version: '3.7.1', verdict: 'yes', kevs: ['CVE-2020-11023'], matches: [] }));
     const lookup = createClient({ apiUrl: 'https://api.example.test/', apiKey: 'k', fetch, sleep });
 
-    await expect(lookup(dep)).resolves.toEqual(['CVE-2020-11023']);
-    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://api.example.test/v1/packages/kevs');
-    expect(JSON.parse(init.body as string)).toEqual({ name: 'jquery', version: '3.7.1' });
+    await expect(lookup([dep])).resolves.toEqual([{ verdict: 'yes', kevs: ['CVE-2020-11023'], unverifiedKevs: [] }]);
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.example.test/v1/packages/kevs/batch');
+    expect(JSON.parse(init.body as string)).toEqual({ packages: [{ ecosystem: 'npm', name: 'jquery', version: '3.7.1' }] });
     expect((init.headers as Record<string, string>)['X-API-Key']).toBe('k');
   });
 
   it('omits the key header when no key is set', async () => {
-    const { fetch, sleep } = setup(json(200, { kevs: [] }));
-    await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(dep);
-    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
-    expect(init.headers).not.toHaveProperty('X-API-Key');
+    const { fetch, sleep } = setup(batch(clean));
+    await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]);
+    expect(fetch.mock.calls[0]![1]!.headers).not.toHaveProperty('X-API-Key');
+  });
+
+  it('maps results back to dependencies by request order', async () => {
+    const deps: Dependency[] = [
+      { ecosystem: 'npm', name: 'a', version: '1.0.0' },
+      { ecosystem: 'pypi', name: 'b', version: '2.0.0' },
+      { ecosystem: 'gem', name: 'c', version: '3.0.0' },
+    ];
+    const { fetch, sleep } = setup(
+      batch(
+        { verdict: 'no', kevs: [], matches: [] },
+        { verdict: 'yes', kevs: ['CVE-2'], matches: [] },
+        { verdict: 'unverified', kevs: [], matches: [{ cve_id: 'CVE-3', verdict: 'unverified' }, { cve_id: 'CVE-3', verdict: 'unverified' }] },
+      ),
+    );
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(deps)).resolves.toEqual([
+      { verdict: 'no', kevs: [], unverifiedKevs: [] },
+      { verdict: 'yes', kevs: ['CVE-2'], unverifiedKevs: [] },
+      { verdict: 'unverified', kevs: [], unverifiedKevs: ['CVE-3'] },
+    ]);
+  });
+
+  it('answers the same name@version in two ecosystems independently', async () => {
+    const deps: Dependency[] = [
+      { ecosystem: 'npm', name: 'requests', version: '2.0.0' },
+      { ecosystem: 'pypi', name: 'requests', version: '2.0.0' },
+    ];
+    const { fetch, sleep } = setup(batch({ verdict: 'no', kevs: [] }, { verdict: 'yes', kevs: ['CVE-9'] }));
+    const results = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(deps);
+    expect(bodyOf(fetch.mock.calls[0]!).packages).toEqual(deps);
+    expect(results.map((r) => r.verdict)).toEqual(['no', 'yes']);
+  });
+
+  it('turns a per-item error into an unchecked result without failing the batch', async () => {
+    const { fetch, sleep } = setup(
+      batch(
+        { input: { ecosystem: 'npm', name: '', version: '1' }, error: { code: 'VALIDATION_ERROR', message: 'name is required' } },
+        clean,
+      ),
+    );
+    const deps: Dependency[] = [{ ecosystem: 'npm', name: '', version: '1' }, dep];
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(deps)).resolves.toEqual([
+      { verdict: 'unchecked', reason: 'name is required' },
+      { verdict: 'no', kevs: [], unverifiedKevs: [] },
+    ]);
+  });
+
+  it('rejects a response whose length differs from the request', async () => {
+    const { fetch, sleep } = setup(batch(clean));
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep });
+    await expect(lookup([dep, dep])).rejects.toThrow(/expected 2 results, got 1 results/);
+  });
+
+  it('rejects an item with an unknown verdict', async () => {
+    const { fetch, sleep } = setup(batch({ verdict: 'maybe', kevs: [] }));
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep])).rejects.toThrow(/unexpected response for jquery@3.7.1/);
   });
 
   it('fails fast on a rejected key', async () => {
     const { fetch, sleep } = setup(json(401, { error: { code: 'INVALID_API_KEY', message: 'invalid api key' } }));
     const lookup = createClient({ apiUrl: 'https://api.example.test', apiKey: 'bad', fetch, sleep });
-    await expect(lookup(dep)).rejects.toThrow(/API key was rejected \(invalid api key\)/);
+    await expect(lookup([dep])).rejects.toThrow(/API key was rejected \(invalid api key\)/);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('waits out a short rate-limit window and retries', async () => {
+  it('waits out a short rate-limit window and resends the chunk', async () => {
     const reset = String(Math.floor(Date.now() / 1000) + 5);
-    const { fetch, sleep } = setup(json(429, { error: { message: 'slow down' } }, { 'X-RateLimit-Reset': reset }), json(200, { kevs: [] }));
-    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(dep)).resolves.toEqual([]);
+    const { fetch, sleep } = setup(json(429, { error: { message: 'slow down' } }, { 'X-RateLimit-Reset': reset }), batch(clean));
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep])).resolves.toHaveLength(1);
     expect(sleep).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('gives up on a long rate-limit window and suggests an API key', async () => {
     const reset = String(Math.floor(Date.now() / 1000) + 3600);
     const { fetch, sleep } = setup(json(429, {}, { 'X-RateLimit-Reset': reset }));
-    const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(dep).catch((e) => e);
+    const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
     expect(error).toBeInstanceOf(FiretruckError);
     expect(error.message).toMatch(/rate limited .* Set the api-key input/);
     expect(sleep).not.toHaveBeenCalled();
   });
 
-  it('retries server errors and network failures, then succeeds', async () => {
-    const { fetch, sleep } = setup(json(503, {}), new TypeError('fetch failed'), json(200, { kevs: ['CVE-1'] }));
-    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(dep)).resolves.toEqual(['CVE-1']);
+  it('resends the whole chunk after a server error or network failure', async () => {
+    const deps: Dependency[] = [dep, { ecosystem: 'gem', name: 'rails', version: '7.0.0' }];
+    const { fetch, sleep } = setup(json(503, {}), new TypeError('fetch failed'), batch(clean, { verdict: 'yes', kevs: ['CVE-1'] }));
+    const results = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })(deps);
+    expect(results.map((r) => r.verdict)).toEqual(['no', 'yes']);
     expect(fetch).toHaveBeenCalledTimes(3);
+    const bodies = fetch.mock.calls.map((call) => (call[1] as RequestInit).body);
+    expect(new Set(bodies).size).toBe(1);
   });
 
   it('stops retrying server errors after maxAttempts', async () => {
     const { fetch, sleep } = setup(json(500, {}), json(500, {}));
     const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep, maxAttempts: 2 });
-    await expect(lookup(dep)).rejects.toThrow(/HTTP 500/);
+    await expect(lookup([dep])).rejects.toThrow(/HTTP 500/);
+  });
+
+  it('fails the step with a generic message when the API rejects a whole chunk', async () => {
+    for (const status of [400, 402, 413]) {
+      const { fetch, sleep } = setup(json(status, { error: { code: 'ANY', message: 'server-side detail that must not be echoed' } }));
+      const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
+      expect(error).toBeInstanceOf(FiretruckError);
+      expect(error.message).toBe(`batch rejected by the API: ${status}`);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    }
+  });
+
+  it('propagates a rejected chunk through lookupAll so the step fails instead of marking dependencies unchecked', async () => {
+    const deps: Dependency[] = Array.from({ length: BATCH_SIZE + 1 }, (_, i) => ({ ecosystem: 'npm', name: `pkg-${i}`, version: '1.0.0' }));
+    const { fetch, sleep } = setup(batch(...deps.slice(0, BATCH_SIZE).map(() => clean)), json(402, { error: { message: 'x' } }));
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep });
+    await expect(lookupAll(lookup, deps, 1)).rejects.toThrow('batch rejected by the API: 402');
+  });
+});
+
+describe('lookupAll', () => {
+  const many = (n: number): Dependency[] =>
+    Array.from({ length: n }, (_, i) => ({ ecosystem: 'npm', name: `pkg-${i}`, version: '1.0.0' }));
+
+  /** A fake API that flags every package whose name ends in 7 as a KEV hit. */
+  const echoApi = () => {
+    const sizes: number[] = [];
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init: RequestInit = {}) => {
+      const { packages } = JSON.parse(init.body as string) as { packages: Dependency[] };
+      sizes.push(packages.length);
+      return batch(...packages.map((p) => (p.name.endsWith('7') ? { verdict: 'yes', kevs: [`CVE-${p.name}`] } : clean)));
+    });
+    return { fetch, sizes };
+  };
+
+  it('splits 250 dependencies into three requests and keeps input order', async () => {
+    const { fetch, sizes } = echoApi();
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch });
+    const deps = many(250);
+
+    const results = await lookupAll(lookup, deps, 2);
+
+    expect(BATCH_SIZE).toBe(100);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(sizes.toSorted((a, b) => b - a)).toEqual([100, 100, 50]);
+    expect(results).toHaveLength(250);
+    results.forEach((result, i) => {
+      expect(result.verdict).toBe(deps[i]!.name.endsWith('7') ? 'yes' : 'no');
+      if (result.verdict === 'yes') expect(result.kevs).toEqual([`CVE-${deps[i]!.name}`]);
+    });
+  });
+
+  it('sends nothing for an empty list', async () => {
+    const { fetch } = echoApi();
+    await expect(lookupAll(createClient({ apiUrl: 'https://api.example.test', fetch }), [], 4)).resolves.toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('retries only the failing chunk', async () => {
+    let failedOnce = false;
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init: RequestInit = {}) => {
+      const { packages } = JSON.parse(init.body as string) as { packages: Dependency[] };
+      if (packages[0]!.name === 'pkg-100' && !failedOnce) {
+        failedOnce = true;
+        return json(502, {});
+      }
+      return batch(...packages.map(() => clean));
+    });
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep: async () => {} });
+    await expect(lookupAll(lookup, many(150), 1)).resolves.toHaveLength(150);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 });
 

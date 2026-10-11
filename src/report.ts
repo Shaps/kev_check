@@ -1,4 +1,4 @@
-import type { Finding, InventoryEntry } from './types.ts';
+import type { Finding, UncheckedEntry } from './types.ts';
 import type { Skipped } from './inventory.ts';
 
 const kevLink = (id: string) => `[${id}](https://www.cve.org/CVERecord?id=${id})`;
@@ -8,26 +8,74 @@ export function distinctKevs(findings: Finding[]): string[] {
   return [...new Set(findings.flatMap((f) => f.kevs))].sort();
 }
 
-export function renderSummary(findings: Finding[], checked: InventoryEntry[], files: string[], skipped: Skipped[]): string {
+const fileList = (files: string[]) => files.map((f) => `\`${escapeCell(f)}\``).join(', ');
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+
+export interface SummaryInput {
+  /** Both verdicts: `yes` and `unverified`. */
+  findings: Finding[];
+  /** Dependencies that received a verdict from the API. */
+  checked: number;
+  unchecked: UncheckedEntry[];
+  files: string[];
+  skipped: Skipped[];
+}
+
+export function renderSummary({ findings, checked, unchecked, files, skipped }: SummaryInput): string {
+  const vulnerable = findings.filter((f) => f.verdict === 'yes');
+  const unverified = findings.filter((f) => f.verdict === 'unverified');
   const lines: string[] = ['## Firetruck KEV check', ''];
 
-  if (findings.length === 0) {
-    lines.push(`No dependencies matched a CISA Known Exploited Vulnerability.`);
+  if (vulnerable.length === 0) {
+    lines.push('No dependencies matched a CISA Known Exploited Vulnerability.');
   } else {
-    const kevs = distinctKevs(findings);
+    const kevs = distinctKevs(vulnerable);
     lines.push(
-      `**${findings.length}** ${findings.length === 1 ? 'dependency matches' : 'dependencies match'} ` +
-        `**${kevs.length}** known exploited ${kevs.length === 1 ? 'vulnerability' : 'vulnerabilities'}.`,
+      `**${vulnerable.length}** ${plural(vulnerable.length, 'dependency matches', 'dependencies match')} ` +
+        `**${kevs.length}** known exploited ${plural(kevs.length, 'vulnerability', 'vulnerabilities')}.`,
       '',
       '| Package | Version | Ecosystem | KEVs | Found in |',
       '| --- | --- | --- | --- | --- |',
-      ...findings.map(({ dependency: d, kevs, files }) =>
-        `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs.map(kevLink).join(', ')} | ${files.map((f) => `\`${escapeCell(f)}\``).join(', ')} |`,
+      ...vulnerable.map(
+        ({ dependency: d, kevs, files }) =>
+          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs.map(kevLink).join(', ')} | ${fileList(files)} |`,
       ),
     );
   }
 
-  lines.push('', `Checked ${checked.length} distinct ${checked.length === 1 ? 'dependency' : 'dependencies'} from ${files.length} ${files.length === 1 ? 'file' : 'files'}.`);
+  if (unverified.length > 0) {
+    lines.push(
+      '',
+      `### Unverified (${unverified.length})`,
+      '',
+      'These dependencies are linked to a known exploited vulnerability, but the affected version range could not be compared with the locked version. They do not fail the step; check them by hand.',
+      '',
+      '| Package | Version | Ecosystem | Linked KEVs | Found in |',
+      '| --- | --- | --- | --- | --- |',
+      ...unverified.map(
+        ({ dependency: d, unverifiedKevs, files }) =>
+          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(', ') || '-'} | ${fileList(files)} |`,
+      ),
+    );
+  }
+
+  if (unchecked.length > 0) {
+    lines.push(
+      '',
+      `### Not checked (${unchecked.length})`,
+      '',
+      'These dependencies were not looked up, so nothing is known about them.',
+      '',
+      '| Package | Version | Ecosystem | Reason | Found in |',
+      '| --- | --- | --- | --- | --- |',
+      ...unchecked.map(
+        ({ dependency: d, files }) =>
+          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${escapeCell(d.ecosystem)} | ${escapeCell(d.reason)} | ${fileList(files)} |`,
+      ),
+    );
+  }
+
+  lines.push('', `Checked ${checked} distinct ${plural(checked, 'dependency', 'dependencies')} from ${files.length} ${plural(files.length, 'file', 'files')}.`);
   if (skipped.length > 0) {
     lines.push('', '<details><summary>Skipped files</summary>', '', ...skipped.map((s) => `- \`${s.file}\`: ${s.reason}`), '', '</details>');
   }

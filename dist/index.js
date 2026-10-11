@@ -3660,8 +3660,8 @@ var require_webidl = __commonJS({
       return new TypeError(`${message.header}: ${message.message}`);
     };
     webidl.errors.conversionFailed = function(context) {
-      const plural = context.types.length === 1 ? "" : " one of";
-      const message = `${context.argument} could not be converted to${plural}: ${context.types.join(", ")}.`;
+      const plural2 = context.types.length === 1 ? "" : " one of";
+      const message = `${context.argument} could not be converted to${plural2}: ${context.types.join(", ")}.`;
       return webidl.errors.exception({
         header: context.prefix,
         message
@@ -11223,9 +11223,9 @@ var require_pluralizer = __commonJS({
       this: "these"
     };
     module.exports = class Pluralizer {
-      constructor(singular, plural) {
+      constructor(singular, plural2) {
         this.singular = singular;
-        this.plural = plural;
+        this.plural = plural2;
       }
       pluralize(count) {
         const one = count === 1;
@@ -26922,6 +26922,19 @@ import { resolve } from "node:path";
 var FiretruckError = class extends Error {
   name = "FiretruckError";
 };
+var BATCH_SIZE = 100;
+var verdicts = /* @__PURE__ */ new Set(["yes", "no", "unverified"]);
+function toResult(item, dependency) {
+  const { verdict, kevs, matches, error: error2 } = item ?? {};
+  if (error2 && typeof error2 === "object") {
+    return { verdict: "unchecked", reason: error2.message || error2.code || "rejected by the API" };
+  }
+  if (typeof verdict !== "string" || !verdicts.has(verdict) || !Array.isArray(kevs)) {
+    throw new FiretruckError(`unexpected response for ${dependency.name}@${dependency.version}`);
+  }
+  const unverifiedKevs = (Array.isArray(matches) ? matches : []).filter((m) => m?.verdict === "unverified" && typeof m.cve_id === "string").map((m) => m.cve_id);
+  return { verdict, kevs: kevs.map(String), unverifiedKevs: [...new Set(unverifiedKevs)] };
+}
 var defaultSleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
 function createClient(options) {
   const {
@@ -26932,26 +26945,32 @@ function createClient(options) {
     maxRateLimitWaitMs = 6e4,
     maxAttempts = 4
   } = options;
-  const endpoint = new URL("/v1/packages/kevs", apiUrl).toString();
+  const endpoint = new URL("/v1/packages/kevs/batch", apiUrl).toString();
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": "firetruck-github-action",
     ...apiKey ? { "X-API-Key": apiKey } : {}
   };
-  return async function lookup({ name, version }) {
+  return async function lookup(dependencies) {
+    const body = JSON.stringify({
+      packages: dependencies.map(({ ecosystem, name, version }) => ({ ecosystem, name, version }))
+    });
     for (let attempt = 1; ; attempt++) {
       let response;
       try {
-        response = await doFetch(endpoint, { method: "POST", headers, body: JSON.stringify({ name, version }) });
+        response = await doFetch(endpoint, { method: "POST", headers, body });
       } catch (error2) {
         if (attempt >= maxAttempts) throw new FiretruckError(`could not reach ${endpoint}: ${String(error2)}`);
         await sleep(2 ** attempt * 500);
         continue;
       }
       if (response.ok) {
-        const body = await response.json();
-        if (!Array.isArray(body.kevs)) throw new FiretruckError(`unexpected response for ${name}@${version}`);
-        return body.kevs.map(String);
+        const { results } = await response.json().catch(() => ({}));
+        if (!Array.isArray(results) || results.length !== dependencies.length) {
+          const got = Array.isArray(results) ? `${results.length} results` : "no results";
+          throw new FiretruckError(`unexpected response: expected ${dependencies.length} results, got ${got}`);
+        }
+        return results.map((item, i) => toResult(item, dependencies[i]));
       }
       const message = (await response.json().catch(() => ({}))).error?.message ?? response.statusText;
       if (response.status === 401) {
@@ -26972,9 +26991,17 @@ function createClient(options) {
         await sleep(2 ** attempt * 500);
         continue;
       }
-      throw new FiretruckError(`lookup for ${name}@${version} failed with HTTP ${response.status}: ${message}`);
+      if (response.status >= 500) {
+        throw new FiretruckError(`lookup of ${dependencies.length} packages failed with HTTP ${response.status}: ${message}`);
+      }
+      throw new FiretruckError(`batch rejected by the API: ${response.status}`);
     }
   };
+}
+async function lookupAll(lookup, dependencies, concurrency) {
+  const chunks = [];
+  for (let i = 0; i < dependencies.length; i += BATCH_SIZE) chunks.push(dependencies.slice(i, i + BATCH_SIZE));
+  return (await mapConcurrent(chunks, concurrency, lookup)).flat();
 }
 async function mapConcurrent(items, limit, fn) {
   const results = new Array(items.length);
@@ -30439,7 +30466,7 @@ function parseGemfileLock(content) {
     const match3 = section === "GEM" && line.match(/^ {4}([^\s(]+) \(([^)\s]+)\)$/);
     if (match3) {
       const version = match3[2].replace(/-(x86|x64|arm|aarch|universal|java|mingw|mswin|darwin|linux).*$/, "");
-      deps.push({ ecosystem: "rubygems", name: match3[1], version });
+      deps.push({ ecosystem: "gem", name: match3[1], version });
     }
   }
   return deps;
@@ -30455,22 +30482,46 @@ var ecosystemFromPurlType = {
   golang: "golang",
   pypi: "pypi",
   cargo: "cargo",
-  gem: "rubygems",
+  gem: "gem",
   composer: "composer",
   maven: "maven",
   nuget: "nuget"
 };
 
 // src/parsers/sbom.ts
+var unchecked = (ecosystem, name, version, reason) => ({
+  ecosystem,
+  name,
+  version,
+  reason
+});
 function fromPurl(purl) {
-  const match3 = purl.match(/^pkg:([^/]+)\/([^@?#]+)@([^?#]+)/);
+  const match3 = purl.match(/^pkg:([^/]+)\/([^?#]+)/);
   if (!match3) return void 0;
-  const [, type, path6, version] = match3;
-  const segments = path6.split("/").map(decodeURIComponent);
-  const ecosystem = ecosystemFromPurlType[type.toLowerCase()] ?? "generic";
-  const name = ecosystem === "maven" ? segments.join(":") : ecosystem === "generic" ? segments.at(-1) : segments.join("/");
-  return { ecosystem, name, version: decodeURIComponent(version) };
+  const [, rawType, rest] = match3;
+  const at = rest.lastIndexOf("@");
+  if (at <= 0 || at === rest.length - 1) return void 0;
+  const type = rawType.toLowerCase();
+  let segments;
+  let version;
+  try {
+    segments = rest.slice(0, at).split("/").map(decodeURIComponent);
+    version = decodeURIComponent(rest.slice(at + 1));
+  } catch {
+    return unchecked(type, rest.slice(0, at), rest.slice(at + 1), "invalid package URL encoding");
+  }
+  const ecosystem = ecosystemFromPurlType[type];
+  if (!ecosystem) {
+    return unchecked(type, segments.join("/"), version, `ecosystem not supported (purl type "${type}")`);
+  }
+  if (ecosystem === "maven") {
+    if (segments.length !== 2) return unchecked(type, segments.join("/"), version, "Maven package URL needs a group and an artifact");
+    return { ecosystem, name: segments.join(":"), version };
+  }
+  const name = segments.join("/");
+  return { ecosystem, name: ecosystem === "pypi" ? pypiName(name) : name, version };
 }
+var noPurl = (name, version) => unchecked("unknown", name, version, "no package URL (purl), so the ecosystem is unknown");
 function isSbom(content) {
   try {
     const doc = JSON.parse(content);
@@ -30483,7 +30534,7 @@ function parseSbom(content) {
   const doc = JSON.parse(content);
   if (doc.bomFormat === "CycloneDX") {
     const walk = (components = []) => components.flatMap((c) => {
-      const own = c.purl && fromPurl(c.purl) || (c.name && c.version ? { ecosystem: "generic", name: c.group ? `${c.group}:${c.name}` : c.name, version: c.version } : void 0);
+      const own = c.purl && fromPurl(c.purl) || (c.name && c.version ? noPurl(c.group ? `${c.group}:${c.name}` : c.name, c.version) : void 0);
       return [...own ? [own] : [], ...walk(c.components)];
     });
     return walk(doc.components);
@@ -30493,7 +30544,7 @@ function parseSbom(content) {
     return (doc.packages ?? []).flatMap((pkg) => {
       if (pkg.SPDXID && described.has(pkg.SPDXID)) return [];
       const purl = pkg.externalRefs?.find((ref) => ref.referenceType === "purl")?.referenceLocator;
-      const dep = purl && fromPurl(purl) || (pkg.name && pkg.versionInfo ? { ecosystem: "generic", name: pkg.name, version: pkg.versionInfo } : void 0);
+      const dep = purl && fromPurl(purl) || (pkg.name && pkg.versionInfo ? noPurl(pkg.name, pkg.versionInfo) : void 0);
       return dep ? [dep] : [];
     });
   }
@@ -30532,6 +30583,9 @@ function parserFor(path6, content) {
   return void 0;
 }
 
+// src/types.ts
+var isUnchecked = (dependency) => "reason" in dependency;
+
 // src/inventory.ts
 var excluded = ["!**/node_modules/**", "!**/vendor/**", "!**/.git/**"];
 async function findFiles(paths) {
@@ -30559,16 +30613,18 @@ async function parseFiles(files, root) {
   return { parsed, skipped };
 }
 function buildInventory(parsed) {
-  const byKey = /* @__PURE__ */ new Map();
+  const inventory = /* @__PURE__ */ new Map();
+  const unchecked2 = /* @__PURE__ */ new Map();
   for (const { file, dependencies } of parsed) {
     for (const dependency of dependencies) {
-      const key = `${dependency.name.toLowerCase()}@${dependency.version}`;
-      const entry = byKey.get(key) ?? { dependency, files: [] };
+      const key = `${dependency.ecosystem}:${dependency.name.toLowerCase()}@${dependency.version}`;
+      const entries = isUnchecked(dependency) ? unchecked2 : inventory;
+      const entry = entries.get(key) ?? { dependency, files: [] };
       if (!entry.files.includes(file)) entry.files.push(file);
-      byKey.set(key, entry);
+      entries.set(key, entry);
     }
   }
-  return [...byKey.values()];
+  return { inventory: [...inventory.values()], unchecked: [...unchecked2.values()] };
 }
 
 // src/report.ts
@@ -30577,23 +30633,55 @@ var escapeCell = (text) => text.replace(/\|/g, "\\|");
 function distinctKevs(findings) {
   return [...new Set(findings.flatMap((f) => f.kevs))].sort();
 }
-function renderSummary(findings, checked, files, skipped) {
+var fileList = (files) => files.map((f) => `\`${escapeCell(f)}\``).join(", ");
+var plural = (n, one, many) => n === 1 ? one : many;
+function renderSummary({ findings, checked, unchecked: unchecked2, files, skipped }) {
+  const vulnerable = findings.filter((f) => f.verdict === "yes");
+  const unverified = findings.filter((f) => f.verdict === "unverified");
   const lines = ["## Firetruck KEV check", ""];
-  if (findings.length === 0) {
-    lines.push(`No dependencies matched a CISA Known Exploited Vulnerability.`);
+  if (vulnerable.length === 0) {
+    lines.push("No dependencies matched a CISA Known Exploited Vulnerability.");
   } else {
-    const kevs = distinctKevs(findings);
+    const kevs = distinctKevs(vulnerable);
     lines.push(
-      `**${findings.length}** ${findings.length === 1 ? "dependency matches" : "dependencies match"} **${kevs.length}** known exploited ${kevs.length === 1 ? "vulnerability" : "vulnerabilities"}.`,
+      `**${vulnerable.length}** ${plural(vulnerable.length, "dependency matches", "dependencies match")} **${kevs.length}** known exploited ${plural(kevs.length, "vulnerability", "vulnerabilities")}.`,
       "",
       "| Package | Version | Ecosystem | KEVs | Found in |",
       "| --- | --- | --- | --- | --- |",
-      ...findings.map(
-        ({ dependency: d, kevs: kevs2, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs2.map(kevLink).join(", ")} | ${files2.map((f) => `\`${escapeCell(f)}\``).join(", ")} |`
+      ...vulnerable.map(
+        ({ dependency: d, kevs: kevs2, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs2.map(kevLink).join(", ")} | ${fileList(files2)} |`
       )
     );
   }
-  lines.push("", `Checked ${checked.length} distinct ${checked.length === 1 ? "dependency" : "dependencies"} from ${files.length} ${files.length === 1 ? "file" : "files"}.`);
+  if (unverified.length > 0) {
+    lines.push(
+      "",
+      `### Unverified (${unverified.length})`,
+      "",
+      "These dependencies are linked to a known exploited vulnerability, but the affected version range could not be compared with the locked version. They do not fail the step; check them by hand.",
+      "",
+      "| Package | Version | Ecosystem | Linked KEVs | Found in |",
+      "| --- | --- | --- | --- | --- |",
+      ...unverified.map(
+        ({ dependency: d, unverifiedKevs, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(", ") || "-"} | ${fileList(files2)} |`
+      )
+    );
+  }
+  if (unchecked2.length > 0) {
+    lines.push(
+      "",
+      `### Not checked (${unchecked2.length})`,
+      "",
+      "These dependencies were not looked up, so nothing is known about them.",
+      "",
+      "| Package | Version | Ecosystem | Reason | Found in |",
+      "| --- | --- | --- | --- | --- |",
+      ...unchecked2.map(
+        ({ dependency: d, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${escapeCell(d.ecosystem)} | ${escapeCell(d.reason)} | ${fileList(files2)} |`
+      )
+    );
+  }
+  lines.push("", `Checked ${checked} distinct ${plural(checked, "dependency", "dependencies")} from ${files.length} ${plural(files.length, "file", "files")}.`);
   if (skipped.length > 0) {
     lines.push("", "<details><summary>Skipped files</summary>", "", ...skipped.map((s) => `- \`${s.file}\`: ${s.reason}`), "", "</details>");
   }
@@ -30631,31 +30719,61 @@ async function run(inputs, lookup = createClient(inputs)) {
   }
   const { parsed, skipped } = await parseFiles(files, root);
   for (const { file, reason } of skipped) warning(`Skipped ${file}: ${reason}`, { file });
-  const inventory = buildInventory(parsed);
+  const { inventory, unchecked: unsupported } = buildInventory(parsed);
   info(`Checking ${inventory.length} distinct dependencies from ${parsed.length} files.`);
-  const kevsPerEntry = await mapConcurrent(inventory, inputs.concurrency, (entry) => lookup(entry.dependency));
-  const findings = inventory.map((entry, i) => ({ ...entry, kevs: kevsPerEntry[i] })).filter((f) => f.kevs.length > 0).sort((a, b) => a.dependency.name.localeCompare(b.dependency.name));
+  const results = await lookupAll(lookup, inventory.map((entry) => entry.dependency), inputs.concurrency);
+  const findings = [];
+  const unchecked2 = [...unsupported];
+  let checked = 0;
+  inventory.forEach((entry, i) => {
+    const result = results[i];
+    if (result.verdict === "unchecked") {
+      unchecked2.push({ dependency: { ...entry.dependency, reason: result.reason }, files: entry.files });
+      return;
+    }
+    checked++;
+    if (result.verdict !== "no") {
+      findings.push({ ...entry, verdict: result.verdict, kevs: result.kevs, unverifiedKevs: result.unverifiedKevs });
+    }
+  });
+  findings.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === "yes" ? -1 : 1) || a.dependency.name.localeCompare(b.dependency.name));
+  const vulnerable = findings.filter((f) => f.verdict === "yes");
+  const unverified = findings.filter((f) => f.verdict === "unverified");
   const annotate = inputs.failOnKev ? error : warning;
-  for (const { dependency: d, kevs, files: declaredIn } of findings) {
+  for (const { dependency: d, verdict, kevs, unverifiedKevs, files: declaredIn } of findings) {
     for (const file of declaredIn) {
       const content = await readFile2(resolve(root, file), "utf8");
-      annotate(`${d.name}@${d.version} is affected by known exploited ${kevs.join(", ")}`, {
-        title: "Known exploited vulnerability",
-        file,
-        startLine: lineOf(content, d.name, d.version)
-      });
+      const location = { file, startLine: lineOf(content, d.name, d.version) };
+      if (verdict === "yes") {
+        annotate(`${d.name}@${d.version} is affected by known exploited ${kevs.join(", ")}`, {
+          title: "Known exploited vulnerability",
+          ...location
+        });
+      } else {
+        const linked = unverifiedKevs.length > 0 ? ` known exploited ${unverifiedKevs.join(", ")}` : " a known exploited vulnerability";
+        warning(`${d.name}@${d.version} is linked to${linked}, but its affected versions could not be compared`, {
+          title: "Unverified known exploited vulnerability",
+          ...location
+        });
+      }
     }
   }
-  setOutput("findings", JSON.stringify(findings.map(({ dependency, files: files2, kevs }) => ({ ...dependency, files: files2, kevs }))));
-  setOutput("kev-count", distinctKevs(findings).length);
-  setOutput("vulnerable-count", findings.length);
-  setOutput("checked-count", inventory.length);
-  if (process.env.GITHUB_STEP_SUMMARY) {
-    await summary.addRaw(renderSummary(findings, inventory, parsed.map((p) => p.file), skipped)).write();
+  if (unchecked2.length > 0) {
+    const noun = unchecked2.length === 1 ? "dependency was" : "dependencies were";
+    warning(`${unchecked2.length} ${noun} not checked; the job summary lists them with the reason.`);
   }
-  if (findings.length > 0 && inputs.failOnKev) {
-    const noun = findings.length === 1 ? "dependency matches" : "dependencies match";
-    setFailed(`${findings.length} ${noun} known exploited vulnerabilities: ${distinctKevs(findings).join(", ")}`);
+  setOutput("findings", JSON.stringify(findings.map(({ dependency, verdict, files: files2, kevs, unverifiedKevs }) => ({ ...dependency, verdict, files: files2, kevs, unverifiedKevs }))));
+  setOutput("kev-count", distinctKevs(vulnerable).length);
+  setOutput("vulnerable-count", vulnerable.length);
+  setOutput("unverified-count", unverified.length);
+  setOutput("unchecked-count", unchecked2.length);
+  setOutput("checked-count", checked);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await summary.addRaw(renderSummary({ findings, checked, unchecked: unchecked2, files: parsed.map((p) => p.file), skipped })).write();
+  }
+  if (vulnerable.length > 0 && inputs.failOnKev) {
+    const noun = vulnerable.length === 1 ? "dependency matches" : "dependencies match";
+    setFailed(`${vulnerable.length} ${noun} known exploited vulnerabilities: ${distinctKevs(vulnerable).join(", ")}`);
   }
   return findings;
 }
