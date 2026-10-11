@@ -1,11 +1,15 @@
 import type { Dependency } from './types.ts';
+import { userAgent } from './version.ts';
 
 export class FiretruckError extends Error {
   override name = 'FiretruckError';
 }
 
+export const DEFAULT_API_URL = 'https://api.firetruck.dev';
+
 export interface ClientOptions {
-  apiUrl: string;
+  /** Overridden only by tests; there is no action input for it. */
+  apiUrl?: string;
   apiKey?: string;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -56,7 +60,7 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 export function createClient(options: ClientOptions) {
   const {
-    apiUrl,
+    apiUrl = DEFAULT_API_URL,
     apiKey,
     fetch: doFetch = fetch,
     sleep = defaultSleep,
@@ -66,7 +70,7 @@ export function createClient(options: ClientOptions) {
   const endpoint = new URL('/v1/packages/kevs/batch', apiUrl).toString();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': 'firetruck-github-action',
+    'User-Agent': userAgent(),
     ...(apiKey ? { 'X-API-Key': apiKey } : {}),
   };
 

@@ -60,10 +60,9 @@ Not-checked dependencies do not fail the step. They raise a single warning and a
 | Input | Default | Description |
 | --- | --- | --- |
 | `paths` | auto-detect | Newline-separated files or globs to scan. SBOMs with other names are detected by content. |
-| `api-key` | none | Firetruck API key. Raises the rate limit above the anonymous per-IP default. Store it as a secret. |
+| `api-key` | none | Firetruck API key. Store it as a secret. |
 | `fail-on-kev` | `true` | Fail the step on any `yes` verdict. Set to `false` to only annotate and summarize. `unverified` never fails the step. |
 | `concurrency` | `8` | Batch requests in flight at once. |
-| `api-url` | `https://api.firetruck.dev` | API base URL, for self-hosted instances. |
 
 ## Outputs
 

@@ -9,7 +9,6 @@ import type { Finding, UncheckedEntry } from './types.ts';
 export interface Inputs {
   paths: string[];
   apiKey: string;
-  apiUrl: string;
   failOnKev: boolean;
   concurrency: number;
 }
@@ -24,7 +23,6 @@ export function readInputs(): Inputs {
   return {
     paths: core.getMultilineInput('paths').filter(Boolean),
     apiKey,
-    apiUrl: core.getInput('api-url') || 'https://api.firetruck.dev',
     failOnKev: core.getBooleanInput('fail-on-kev'),
     concurrency,
   };

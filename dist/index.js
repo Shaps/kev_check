@@ -26918,10 +26918,49 @@ function info(message) {
 import { readFile as readFile2 } from "node:fs/promises";
 import { resolve } from "node:path";
 
+// package.json
+var package_default = {
+  name: "firetruck-github-action",
+  version: "0.1.0",
+  private: true,
+  description: "Fail CI when a dependency is tied to a CISA Known Exploited Vulnerability, via the Firetruck API.",
+  type: "module",
+  engines: {
+    node: ">=24"
+  },
+  scripts: {
+    build: `esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.js --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"`,
+    typecheck: "tsc --noEmit",
+    test: "vitest run",
+    all: "npm run typecheck && npm test && npm run build"
+  },
+  license: "MIT",
+  dependencies: {
+    "@actions/core": "^3.0.1",
+    "@actions/glob": "^0.7.0",
+    "smol-toml": "^1.9.0",
+    yaml: "^2.9.1"
+  },
+  devDependencies: {
+    "@types/node": "^26.6.3",
+    esbuild: "^0.28.2",
+    typescript: "^7.0.2",
+    vitest: "^5.0.2"
+  }
+};
+
+// src/version.ts
+var VERSION = package_default.version;
+function userAgent(env = process.env) {
+  const ref = env.GITHUB_ACTION_REF?.replace(/[^\w./-]/g, "");
+  return ref ? `firetruck-action/${VERSION} (${ref})` : `firetruck-action/${VERSION}`;
+}
+
 // src/client.ts
 var FiretruckError = class extends Error {
   name = "FiretruckError";
 };
+var DEFAULT_API_URL = "https://api.firetruck.dev";
 var BATCH_SIZE = 100;
 var verdicts = /* @__PURE__ */ new Set(["yes", "no", "unverified"]);
 function toResult(item, dependency) {
@@ -26938,7 +26977,7 @@ function toResult(item, dependency) {
 var defaultSleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
 function createClient(options) {
   const {
-    apiUrl,
+    apiUrl = DEFAULT_API_URL,
     apiKey,
     fetch: doFetch = fetch,
     sleep = defaultSleep,
@@ -26948,7 +26987,7 @@ function createClient(options) {
   const endpoint = new URL("/v1/packages/kevs/batch", apiUrl).toString();
   const headers = {
     "Content-Type": "application/json",
-    "User-Agent": "firetruck-github-action",
+    "User-Agent": userAgent(),
     ...apiKey ? { "X-API-Key": apiKey } : {}
   };
   return async function lookup(dependencies) {
@@ -30705,7 +30744,6 @@ function readInputs() {
   return {
     paths: getMultilineInput("paths").filter(Boolean),
     apiKey,
-    apiUrl: getInput("api-url") || "https://api.firetruck.dev",
     failOnKev: getBooleanInput("fail-on-kev"),
     concurrency
   };
