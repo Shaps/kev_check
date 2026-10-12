@@ -26921,20 +26921,17 @@ import { resolve } from "node:path";
 // package.json
 var package_default = {
   name: "firetruck-github-action",
-  version: "0.1.0",
+  version: "0.1.1",
   private: true,
   description: "Fail CI when a dependency is tied to a CISA Known Exploited Vulnerability, via the Firetruck API.",
+  license: "MIT",
   type: "module",
-  engines: {
-    node: ">=24"
-  },
   scripts: {
     build: `esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.js --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"`,
     typecheck: "tsc --noEmit",
     test: "vitest run",
     all: "npm run typecheck && npm test && npm run build"
   },
-  license: "MIT",
   dependencies: {
     "@actions/core": "^3.0.1",
     "@actions/glob": "^0.7.0",
@@ -26946,6 +26943,9 @@ var package_default = {
     esbuild: "^0.28.2",
     typescript: "^7.0.2",
     vitest: "^5.0.2"
+  },
+  engines: {
+    node: ">=24"
   }
 };
 
