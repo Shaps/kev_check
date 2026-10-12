@@ -2,6 +2,9 @@
 
 A GitHub Action that fails CI when a locked dependency is affected by a [CISA Known Exploited Vulnerability](https://www.cisa.gov/known-exploited-vulnerabilities-catalog). It reads your lockfiles or SBOM and checks every resolved package against the [Firetruck](https://firetruck.dev) API.
 
+> [!WARNING]
+> This action is in beta. It may fail or misbehave unexpectedly, and a green run is not a guarantee that your dependencies are free of known exploited vulnerabilities. Please [report problems](https://github.com/shaps/kev_check/issues/new/choose), including false positives, missed vulnerabilities and unsupported lockfile formats.
+
 ```yaml
 - uses: actions/checkout@v5
 - uses: shaps/kev_check@v0
