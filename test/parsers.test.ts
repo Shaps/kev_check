@@ -61,6 +61,21 @@ packages:
     ]);
   });
 
+  it('reads every document of a multi-document pnpm lockfile', () => {
+    const lock = `---
+lockfileVersion: '9.0'
+packages:
+  pnpm@10.0.0:
+    resolution: {integrity: x}
+---
+lockfileVersion: '9.0'
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: x}
+`;
+    expect(pairs(parsePnpmLock(lock))).toEqual(['pnpm@10.0.0', 'lodash@4.17.21']);
+  });
+
   it('reads yarn classic', () => {
     const lock = `# yarn lockfile v1
 

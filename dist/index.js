@@ -26261,7 +26261,7 @@ var require_public_api = __commonJS({
       const lineCounter$1 = options.lineCounter || prettyErrors && new lineCounter.LineCounter() || null;
       return { lineCounter: lineCounter$1, prettyErrors };
     }
-    function parseAllDocuments(source, options = {}) {
+    function parseAllDocuments2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -26336,7 +26336,7 @@ var require_public_api = __commonJS({
       return new Document.Document(value, _replacer, options).toString(options);
     }
     exports.parse = parse2;
-    exports.parseAllDocuments = parseAllDocuments;
+    exports.parseAllDocuments = parseAllDocuments2;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify2;
   }
@@ -29658,8 +29658,12 @@ function parsePackageLock(content) {
   return walk(lock.dependencies);
 }
 function parsePnpmLock(content) {
-  const lock = (0, import_yaml.parse)(content);
-  return Object.keys(lock?.packages ?? {}).flatMap((key) => {
+  const keys = (0, import_yaml.parseAllDocuments)(content).flatMap((doc) => {
+    if (doc.errors.length) throw doc.errors[0];
+    const lock = doc.toJS();
+    return Object.keys(lock?.packages ?? {});
+  });
+  return keys.flatMap((key) => {
     const spec = key.replace(/^\//, "").replace(/\(.*$/, "");
     const split = splitAtVersion(spec);
     if (split) return [npm(...split)];
