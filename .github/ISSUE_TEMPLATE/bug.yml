@@ -1,0 +1,64 @@
+name: Bug report
+description: The action failed, crashed or behaved unexpectedly.
+title: "bug: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This action is in beta, so bugs are expected. Thanks for reporting.
+
+        For a wrong, missing or `unverified` verdict use **Wrong or missing verdict**. For a lockfile that was read incorrectly use **Parsing or unsupported file**. Report security vulnerabilities privately, see the security policy.
+  - type: input
+    id: version
+    attributes:
+      label: Action version
+      description: The ref in your workflow, for example `shaps/kev_check@v0`, a tag or a commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: runner
+    attributes:
+      label: Runner
+      options:
+        - ubuntu-latest
+        - Other Ubuntu
+        - macOS
+        - Windows
+        - Self-hosted
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow step
+      description: The step that runs the action, including its `with:` inputs. Do not paste your API key.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Step log
+      description: The output of the action step. Remove anything private first. If the step failed silently, re-run with step debug logging enabled (`ACTIONS_STEP_DEBUG=true`).
+      render: text
+  - type: dropdown
+    id: api-key
+    attributes:
+      label: Did you set `api-key`?
+      description: Yes or no only. Never include the key itself.
+      options:
+        - "Yes"
+        - "No"

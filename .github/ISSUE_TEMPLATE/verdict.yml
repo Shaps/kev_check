@@ -1,0 +1,66 @@
+name: Wrong or missing verdict
+description: A false positive, a missed known exploited vulnerability, or an `unverified` verdict that should be decided.
+title: "verdict: "
+labels: [verdict, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Verdicts come from the Firetruck API, so some of these turn out to be data issues there. Report them here anyway. If it is an API problem I will point you to the right place.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong?
+      options:
+        - False positive (flagged, but this version is not affected)
+        - Missed KEV (not flagged, but a known exploited vulnerability affects this version)
+        - Unverified, but it should be decided
+        - Package reported as not checked, but its ecosystem is supported
+    validations:
+      required: true
+  - type: input
+    id: ecosystem
+    attributes:
+      label: Ecosystem
+      description: One of maven, npm, pypi, golang, gem, nuget, cargo or composer.
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package name and version
+      placeholder: lodash 4.17.20
+    validations:
+      required: true
+  - type: input
+    id: verdict
+    attributes:
+      label: Verdict you got
+      description: yes, no, unverified or not checked.
+    validations:
+      required: true
+  - type: input
+    id: cve
+    attributes:
+      label: CVE involved
+      description: The CVE ID you expected, or the one that was flagged wrongly.
+      placeholder: CVE-2021-44228
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why you think the verdict is wrong
+      description: Link the CISA KEV entry or the vendor advisory with the affected version range, if you have it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Action version
+      description: For example `shaps/kev_check@v0` or a commit SHA.
+    validations:
+      required: true
+  - type: input
+    id: file
+    attributes:
+      label: Lockfile or SBOM type
+      description: For example `package-lock.json`, `poetry.lock` or a CycloneDX SBOM.
