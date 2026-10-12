@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a new ecosystem, input or behavior.
+title: "feat: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: Your current workaround, if any.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: For a new input, say what it would be called and its default. For a new ecosystem, name the lockfile format.

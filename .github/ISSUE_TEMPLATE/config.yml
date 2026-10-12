@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/shaps/kev_check/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue for them.
+  - name: Firetruck API or website
+    url: https://firetruck.dev
+    about: Problems with the Firetruck service itself, such as API keys, billing or outages, are not handled in this repository.

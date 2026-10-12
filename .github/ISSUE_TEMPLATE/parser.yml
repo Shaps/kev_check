@@ -1,0 +1,49 @@
+name: Parsing or unsupported file
+description: A lockfile or SBOM produced no dependencies, wrong ones, or a skipped-file warning.
+title: "parser: "
+labels: [parser, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A file the action cannot read means dependencies go unchecked, so these reports matter. Please sanitize any file contents before pasting them: package names in private repositories can be sensitive.
+  - type: input
+    id: file
+    attributes:
+      label: File and tool
+      description: The file name and the tool version that produced it.
+      placeholder: pnpm-lock.yaml from pnpm 10.4
+    validations:
+      required: true
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: What happened?
+      options:
+        - The file was skipped with a warning
+        - The file was read but some dependencies are missing
+        - The file was read but names or versions are wrong
+        - The file type is not supported
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Job summary or warning
+      description: The "Not checked" and "Skipped files" sections of the job summary, or the warning text from the log.
+      render: text
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal sample
+      description: The smallest excerpt of the file that shows the problem, and what you expected it to produce.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Action version
+      description: For example `shaps/kev_check@v0` or a commit SHA.
+    validations:
+      required: true
