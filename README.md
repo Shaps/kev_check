@@ -22,16 +22,17 @@ With no inputs, the action finds supported lockfiles and SBOMs anywhere in the w
 | Rust | `Cargo.lock` |
 | Ruby | `Gemfile.lock` |
 | PHP | `composer.lock` |
+| Gradle | `gradle.lockfile` (dependency locking). `build.gradle` and `build.gradle.kts` are not read; generate a CycloneDX SBOM for the resolved tree. |
+| Maven | No native parser for `pom.xml`. Generate a CycloneDX SBOM; see [Maven and Gradle](#maven-and-gradle). |
 | Any | CycloneDX JSON (`*.cdx.json`, `bom.json`) and SPDX JSON (`*.spdx.json`) |
-| Maven, Gradle | No native parser. Generate a CycloneDX SBOM first; see [Maven and Gradle](#maven-and-gradle). |
 
 SBOM components are identified by their package URL (purl). A component whose purl type is not one of the supported ecosystems below, or that has no purl, is not checked; see [Verdicts](#verdicts).
 
-Only JSON SBOMs are read: CycloneDX XML (`bom.xml`) and SPDX tag-value files are not. Auto-detection never picks up other files. If `paths` names one, such as `pom.xml`, `build.gradle`, `build.gradle.kts`, or `gradle.lockfile`, it is skipped with a warning.
+Only JSON SBOMs are read: CycloneDX XML (`bom.xml`) and SPDX tag-value files are not. Auto-detection never picks up other files. If `paths` names one, such as `pom.xml`, `build.gradle`, or `build.gradle.kts`, it is skipped with a warning, and the step fails when that leaves nothing to check.
 
 ## Maven and Gradle
 
-The action does not read `pom.xml`, `build.gradle`, `build.gradle.kts`, or `gradle.lockfile`. A repository with only those files fails with `no lockfiles or SBOMs found in the workspace`. Generate a CycloneDX JSON SBOM in an earlier step and point `paths` at it.
+The action reads a Gradle dependency lock (`gradle.lockfile`) as Maven coordinates (`group:artifact`). It does not read `pom.xml`, `build.gradle`, or `build.gradle.kts`. A repository with only those build files fails with `no lockfiles or SBOMs found in the workspace`. Generate a CycloneDX JSON SBOM in an earlier step and point `paths` at it to check the resolved tree.
 
 Generate the SBOM with your build tool. Maven or Gradle resolves the full dependency tree, so the SBOM has every transitive dependency at the version your build actually uses, including versions set by a parent POM or a BOM.
 
@@ -99,22 +100,9 @@ The aggregate SBOM is written to `build/reports/cyclonedx/bom.json`. Spring Boot
 
 #### Gradle dependency locking
 
-The action cannot read `gradle.lockfile` directly. If you already commit one, [Syft](https://github.com/anchore/syft) can convert it to an SBOM without running Gradle:
+A committed `gradle.lockfile` is checked directly. Each `group:artifact:version` line is a Maven dependency; comments, blank lines, and the `empty=` marker are ignored. The lockfile holds every locked configuration, so test dependencies are included unless you lock only `runtimeClasspath`. Each Gradle project has its own lockfile, and auto-detection picks up all of them.
 
-```yaml
-- uses: actions/checkout@v5
-- uses: anchore/sbom-action@v0
-  with:
-    file: gradle.lockfile
-    format: cyclonedx-json
-    output-file: gradle.cdx.json
-    upload-artifact: false
-- uses: shaps/kev_check@v0
-  with:
-    paths: gradle.cdx.json
-```
-
-The lockfile holds every locked configuration, so the SBOM includes test dependencies unless you lock only `runtimeClasspath`. Each Gradle project has its own lockfile, so a multi-project build needs one conversion per lockfile.
+An SBOM is still the way to check a build that does not commit a lockfile. See the Gradle setup above.
 
 ### Do not scan the source tree
 
@@ -122,7 +110,7 @@ A generic scanner run on the checked-out sources, such as `anchore/sbom-action` 
 
 ### Fail when nothing was checked
 
-If `paths` matches only files the action cannot parse, such as a `pom.xml` or `gradle.lockfile`, they are skipped with a warning and the step passes with `checked-count` set to `0`. The same happens with an SBOM that lists no components. To fail in that case:
+If nothing was checked because a file was skipped as unsupported, or because a recognized lockfile such as `gradle.lockfile` parsed to no dependencies, the step fails. An SBOM that lists no components still passes with `checked-count` set to `0`. To fail in that case:
 
 ```yaml
 - id: kev

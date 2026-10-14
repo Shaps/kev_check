@@ -5,6 +5,7 @@ import {
   parseComposerLock,
   parseGemfileLock,
   parseGoMod,
+  parseGradleLockfile,
   parsePipfileLock,
   parsePythonTomlLock,
   parseRequirements,
@@ -235,6 +236,24 @@ PLATFORMS
       'packages-dev': [{ name: 'phpunit/phpunit', version: '10.1.0' }],
     });
     expect(pairs(parseComposerLock(lock))).toEqual(['laravel/framework@10.0.0', 'phpunit/phpunit@10.1.0']);
+  });
+
+  it('reads gradle.lockfile as Maven coordinates, ignoring comments, blanks, and empty=', () => {
+    const lock = `# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+
+com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath
+org.apache.logging.log4j:log4j-core:2.14.1=runtimeClasspath
+org.springframework:spring-core:5.0.5.RELEASE=compileClasspath, runtimeClasspath
+empty=annotationProcessor
+`;
+    expect(parseGradleLockfile(lock)).toEqual([
+      { ecosystem: 'maven', name: 'com.google.guava:guava', version: '32.1.2-jre' },
+      { ecosystem: 'maven', name: 'org.apache.logging.log4j:log4j-core', version: '2.14.1' },
+      { ecosystem: 'maven', name: 'org.springframework:spring-core', version: '5.0.5.RELEASE' },
+    ]);
+    expect(parseGradleLockfile('# only a comment\n\nempty=\n')).toEqual([]);
+    expect(parserFor('app/gradle.lockfile', lock)).toBe(parseGradleLockfile);
   });
 });
 

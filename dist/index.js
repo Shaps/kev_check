@@ -30520,6 +30520,24 @@ function parseComposerLock(content) {
     ({ name, version }) => name && version && !version.startsWith("dev-") ? [{ ecosystem: "composer", name, version: version.replace(/^v/, "") }] : []
   );
 }
+function parseGradleLockfile(content) {
+  const deps = [];
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const coordinate = line.slice(0, eq).trim();
+    if (coordinate === "empty") continue;
+    const parts = coordinate.split(":");
+    const group = parts[0];
+    const artifact = parts[1];
+    const version = parts.slice(2).join(":");
+    if (!group || !artifact || !version) continue;
+    deps.push({ ecosystem: "maven", name: `${group}:${artifact}`, version });
+  }
+  return deps;
+}
 var ecosystemFromPurlType = {
   npm: "npm",
   golang: "golang",
@@ -30608,8 +30626,14 @@ var lockfiles = {
   "uv.lock": parsePythonTomlLock,
   "Cargo.lock": parseCargoLock,
   "Gemfile.lock": parseGemfileLock,
-  "composer.lock": parseComposerLock
+  "composer.lock": parseComposerLock,
+  "gradle.lockfile": parseGradleLockfile
 };
+var requirementsTxt = /^requirements.*\.txt$/;
+function isKnownLockfile(path6) {
+  const name = basename3(path6);
+  return Object.hasOwn(lockfiles, name) || requirementsTxt.test(name);
+}
 var autoDetectPatterns = [
   ...Object.keys(lockfiles).map((name) => `**/${name}`),
   "**/requirements*.txt",
@@ -30620,7 +30644,7 @@ var autoDetectPatterns = [
 function parserFor(path6, content) {
   const name = basename3(path6);
   if (lockfiles[name]) return lockfiles[name];
-  if (/^requirements.*\.txt$/.test(name)) return parseRequirements;
+  if (requirementsTxt.test(name)) return parseRequirements;
   if (/(\.cdx|\.spdx)\.json$|^bom\.json$/.test(name)) return parseSbom;
   if (name.endsWith(".json") && isSbom(content)) return parseSbom;
   return void 0;
@@ -30752,6 +30776,12 @@ function readInputs() {
     concurrency
   };
 }
+function emptyInventoryFailure(parsed, skipped) {
+  const unsupported = skipped.filter((entry) => entry.reason === "unsupported file type").map((entry) => entry.file);
+  const emptyLocks = parsed.filter((entry) => isKnownLockfile(entry.file) && !entry.dependencies.some((dep) => !isUnchecked(dep))).map((entry) => entry.file);
+  if (unsupported.length === 0 && emptyLocks.length === 0) return void 0;
+  return `matched lockfile(s) but checked 0 dependencies (unsupported or empty): ${[...unsupported, ...emptyLocks].join(", ")}`;
+}
 async function run(inputs, lookup = createClient(inputs)) {
   const root = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const files = await findFiles(inputs.paths);
@@ -30762,6 +30792,10 @@ async function run(inputs, lookup = createClient(inputs)) {
   const { parsed, skipped } = await parseFiles(files, root);
   for (const { file, reason } of skipped) warning(`Skipped ${file}: ${reason}`, { file });
   const { inventory, unchecked: unsupported } = buildInventory(parsed);
+  if (inventory.length === 0) {
+    const failure = emptyInventoryFailure(parsed, skipped);
+    if (failure) throw new Error(failure);
+  }
   info(`Checking ${inventory.length} distinct dependencies from ${parsed.length} files.`);
   const results = await lookupAll(lookup, inventory.map((entry) => entry.dependency), inputs.concurrency);
   const findings = [];

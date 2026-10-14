@@ -2,9 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import * as core from '@actions/core';
 import { createClient, lookupAll, type Lookup } from './client.ts';
-import { buildInventory, findFiles, parseFiles } from './inventory.ts';
+import { buildInventory, findFiles, parseFiles, type ParsedFile, type Skipped } from './inventory.ts';
+import { isKnownLockfile } from './parsers/index.ts';
 import { distinctKevs, lineOf, renderSummary } from './report.ts';
-import type { Finding, UncheckedEntry } from './types.ts';
+import { isUnchecked, type Finding, type UncheckedEntry } from './types.ts';
 
 export interface Inputs {
   paths: string[];
@@ -28,6 +29,20 @@ export function readInputs(): Inputs {
   };
 }
 
+/**
+ * A green run that checked nothing is a silent pass. Fail when every checkable dependency is
+ * missing because a file was skipped as unsupported, or a recognized lockfile parsed to none.
+ * An SBOM with no components is neither of those and may still pass.
+ */
+function emptyInventoryFailure(parsed: ParsedFile[], skipped: Skipped[]): string | undefined {
+  const unsupported = skipped.filter((entry) => entry.reason === 'unsupported file type').map((entry) => entry.file);
+  const emptyLocks = parsed
+    .filter((entry) => isKnownLockfile(entry.file) && !entry.dependencies.some((dep) => !isUnchecked(dep)))
+    .map((entry) => entry.file);
+  if (unsupported.length === 0 && emptyLocks.length === 0) return undefined;
+  return `matched lockfile(s) but checked 0 dependencies (unsupported or empty): ${[...unsupported, ...emptyLocks].join(', ')}`;
+}
+
 export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs)): Promise<Finding[]> {
   const root = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const files = await findFiles(inputs.paths);
@@ -39,6 +54,10 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
   const { parsed, skipped } = await parseFiles(files, root);
   for (const { file, reason } of skipped) core.warning(`Skipped ${file}: ${reason}`, { file });
   const { inventory, unchecked: unsupported } = buildInventory(parsed);
+  if (inventory.length === 0) {
+    const failure = emptyInventoryFailure(parsed, skipped);
+    if (failure) throw new Error(failure);
+  }
   core.info(`Checking ${inventory.length} distinct dependencies from ${parsed.length} files.`);
 
   const results = await lookupAll(lookup, inventory.map((entry) => entry.dependency), inputs.concurrency);

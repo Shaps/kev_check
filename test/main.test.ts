@@ -266,4 +266,48 @@ describe('run', () => {
   it('errors clearly when nothing is found', async () => {
     await expect(run(inputs(), fakeLookup)).rejects.toThrow(/no lockfiles or SBOMs found in the workspace/);
   });
+
+  it('checks dependencies from a gradle.lockfile instead of skipping it', async () => {
+    await writeWorkspace({
+      'gradle.lockfile': `# This is a Gradle generated file for dependency locking.
+com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath
+org.apache.logging.log4j:log4j-core:2.14.1=runtimeClasspath
+empty=
+`,
+    });
+
+    await run(inputs({ paths: ['gradle.lockfile'] }), fakeLookup);
+
+    expect(sentDependencies()).toEqual([
+      'maven:com.google.guava:guava@32.1.2-jre',
+      'maven:org.apache.logging.log4j:log4j-core@2.14.1',
+    ]);
+    expect(outputs()).toMatchObject({ 'checked-count': 2, 'unchecked-count': 0 });
+    expect(core.warning).not.toHaveBeenCalledWith(expect.stringContaining('unsupported file type'), expect.anything());
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it('fails when an explicit path is an unsupported file and nothing was checked', async () => {
+    await writeWorkspace({ 'pom.xml': '<project/>\n' });
+    await expect(run(inputs({ paths: ['pom.xml'] }), fakeLookup)).rejects.toThrow(
+      'matched lockfile(s) but checked 0 dependencies (unsupported or empty): pom.xml',
+    );
+    expect(fakeLookup).not.toHaveBeenCalled();
+    expect(outputs()['checked-count']).toBeUndefined();
+  });
+
+  it('fails when a gradle.lockfile has no dependencies', async () => {
+    await writeWorkspace({ 'gradle.lockfile': '# comment\n\nempty=\n' });
+    await expect(run(inputs({ paths: ['gradle.lockfile'] }), fakeLookup)).rejects.toThrow(
+      'matched lockfile(s) but checked 0 dependencies (unsupported or empty): gradle.lockfile',
+    );
+    expect(fakeLookup).not.toHaveBeenCalled();
+  });
+
+  it('still passes an empty CycloneDX SBOM', async () => {
+    await writeWorkspace({ 'bom.json': JSON.stringify({ bomFormat: 'CycloneDX', components: [] }) });
+    await expect(run(inputs({ paths: ['bom.json'] }), fakeLookup)).resolves.toEqual([]);
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(outputs()).toMatchObject({ 'checked-count': 0, 'unchecked-count': 0 });
+  });
 });

@@ -92,6 +92,30 @@ export function parseComposerLock(content: string): Dependency[] {
   );
 }
 
+/**
+ * Gradle dependency locking (`gradle.lockfile`): `group:artifact:version=configurations`.
+ * Comments, blank lines, and the `empty=` marker (configurations with nothing locked) are ignored.
+ * The version is the third colon-separated field; further colons stay part of the version.
+ */
+export function parseGradleLockfile(content: string): Dependency[] {
+  const deps: Dependency[] = [];
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const coordinate = line.slice(0, eq).trim();
+    if (coordinate === 'empty') continue;
+    const parts = coordinate.split(':');
+    const group = parts[0];
+    const artifact = parts[1];
+    const version = parts.slice(2).join(':');
+    if (!group || !artifact || !version) continue;
+    deps.push({ ecosystem: 'maven', name: `${group}:${artifact}`, version });
+  }
+  return deps;
+}
+
 export const ecosystemFromPurlType: Record<string, Ecosystem> = {
   npm: 'npm',
   golang: 'golang',

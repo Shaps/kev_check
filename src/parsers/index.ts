@@ -6,6 +6,7 @@ import {
   parseComposerLock,
   parseGemfileLock,
   parseGoMod,
+  parseGradleLockfile,
   parsePipfileLock,
   parsePythonTomlLock,
   parseRequirements,
@@ -26,7 +27,16 @@ const lockfiles: Record<string, Parser> = {
   'Cargo.lock': parseCargoLock,
   'Gemfile.lock': parseGemfileLock,
   'composer.lock': parseComposerLock,
+  'gradle.lockfile': parseGradleLockfile,
 };
+
+const requirementsTxt = /^requirements.*\.txt$/;
+
+/** True for a registered lockfile name, including `requirements*.txt`. SBOMs are not lockfiles. */
+export function isKnownLockfile(path: string): boolean {
+  const name = basename(path);
+  return Object.hasOwn(lockfiles, name) || requirementsTxt.test(name);
+}
 
 /** Glob patterns for auto-detection when the `paths` input is empty. */
 export const autoDetectPatterns = [
@@ -41,7 +51,7 @@ export const autoDetectPatterns = [
 export function parserFor(path: string, content: string): Parser | undefined {
   const name = basename(path);
   if (lockfiles[name]) return lockfiles[name];
-  if (/^requirements.*\.txt$/.test(name)) return parseRequirements;
+  if (requirementsTxt.test(name)) return parseRequirements;
   if (/(\.cdx|\.spdx)\.json$|^bom\.json$/.test(name)) return parseSbom;
   if (name.endsWith('.json') && isSbom(content)) return parseSbom;
   return undefined;
