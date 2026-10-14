@@ -23,19 +23,116 @@ With no inputs, the action finds supported lockfiles and SBOMs anywhere in the w
 | Ruby | `Gemfile.lock` |
 | PHP | `composer.lock` |
 | Any | CycloneDX JSON (`*.cdx.json`, `bom.json`) and SPDX JSON (`*.spdx.json`) |
+| Maven, Gradle | No native parser. Generate a CycloneDX SBOM first; see [Maven and Gradle](#maven-and-gradle). |
 
 SBOM components are identified by their package URL (purl). A component whose purl type is not one of the supported ecosystems below, or that has no purl, is not checked; see [Verdicts](#verdicts).
 
-For ecosystems without a lockfile, such as Maven or Gradle, generate an SBOM first and point `paths` at it:
+Only JSON SBOMs are read: CycloneDX XML (`bom.xml`) and SPDX tag-value files are not. Auto-detection never picks up other files. If `paths` names one, such as `pom.xml`, `build.gradle`, `build.gradle.kts`, or `gradle.lockfile`, it is skipped with a warning.
+
+## Maven and Gradle
+
+The action does not read `pom.xml`, `build.gradle`, `build.gradle.kts`, or `gradle.lockfile`. A repository with only those files fails with `no lockfiles or SBOMs found in the workspace`. Generate a CycloneDX JSON SBOM in an earlier step and point `paths` at it.
+
+Generate the SBOM with your build tool. Maven or Gradle resolves the full dependency tree, so the SBOM has every transitive dependency at the version your build actually uses, including versions set by a parent POM or a BOM.
+
+### Maven
+
+The [CycloneDX Maven plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin) runs without any change to `pom.xml`:
 
 ```yaml
-- uses: anchore/sbom-action@v0
+- uses: actions/checkout@v5
+- uses: actions/setup-java@v5
   with:
-    format: cyclonedx-json
-    output-file: sbom.cdx.json
+    distribution: temurin
+    java-version: '17'
+    cache: maven
+- run: mvn -B -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json
 - uses: shaps/kev_check@v0
   with:
-    paths: sbom.cdx.json
+    paths: target/bom.json
+```
+
+`makeAggregateBom` writes a single SBOM covering every module of the build to `target/bom.json` in the directory where Maven runs. It leaves out test-scoped dependencies by default.
+
+### Gradle
+
+Apply the [CycloneDX Gradle plugin](https://github.com/CycloneDX/cyclonedx-gradle-plugin) to the root project. By default it scans every resolvable configuration, test ones included, so limit it to `runtimeClasspath`:
+
+```kotlin
+// build.gradle.kts
+plugins {
+    id("org.cyclonedx.bom") version "3.5.1"
+}
+
+tasks.cyclonedxDirectBom {
+    includeConfigs = listOf("runtimeClasspath")
+}
+```
+
+```groovy
+// build.gradle
+plugins {
+    id 'org.cyclonedx.bom' version '3.5.1'
+}
+
+tasks.cyclonedxDirectBom {
+    includeConfigs = ['runtimeClasspath']
+}
+```
+
+In a multi-project build, configure `cyclonedxDirectBom` in each subproject as well; see the plugin's README. Then run the aggregate task before the action:
+
+```yaml
+- uses: actions/checkout@v5
+- uses: actions/setup-java@v5
+  with:
+    distribution: temurin
+    java-version: '17'
+    cache: gradle
+- run: ./gradlew cyclonedxBom
+- uses: shaps/kev_check@v0
+  with:
+    paths: build/reports/cyclonedx/*.json
+```
+
+The aggregate SBOM is written to `build/reports/cyclonedx/bom.json`. Spring Boot renames it to `application.cdx.json`, and the glob above matches both names.
+
+#### Gradle dependency locking
+
+The action cannot read `gradle.lockfile` directly. If you already commit one, [Syft](https://github.com/anchore/syft) can convert it to an SBOM without running Gradle:
+
+```yaml
+- uses: actions/checkout@v5
+- uses: anchore/sbom-action@v0
+  with:
+    file: gradle.lockfile
+    format: cyclonedx-json
+    output-file: gradle.cdx.json
+    upload-artifact: false
+- uses: shaps/kev_check@v0
+  with:
+    paths: gradle.cdx.json
+```
+
+The lockfile holds every locked configuration, so the SBOM includes test dependencies unless you lock only `runtimeClasspath`. Each Gradle project has its own lockfile, so a multi-project build needs one conversion per lockfile.
+
+### Do not scan the source tree
+
+A generic scanner run on the checked-out sources, such as `anchore/sbom-action` with its default `path: .`, reads `pom.xml` without resolving it. Transitive dependencies are missing, versions inherited from a parent POM or a BOM come out as `UNKNOWN`, and Gradle build scripts are not read at all. The action reports those components as not checked, and the step can pass while checking almost nothing. Generate the SBOM with Maven or Gradle as shown above.
+
+### Fail when nothing was checked
+
+If `paths` matches only files the action cannot parse, such as a `pom.xml` or `gradle.lockfile`, they are skipped with a warning and the step passes with `checked-count` set to `0`. The same happens with an SBOM that lists no components. To fail in that case:
+
+```yaml
+- id: kev
+  uses: shaps/kev_check@v0
+  with:
+    paths: target/bom.json
+- if: steps.kev.outputs.checked-count == '0'
+  run: |
+    echo "::error::kev_check did not check any dependencies"
+    exit 1
 ```
 
 ## Verdicts
