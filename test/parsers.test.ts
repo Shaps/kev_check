@@ -323,4 +323,12 @@ describe('sbom', () => {
     expect(parserFor('out/other.json', '{"a":1}')).toBeUndefined();
     expect(parserFor('requirements-dev.txt', '')).toBe(parseRequirements);
   });
+
+  it('returns no parser for Maven and Gradle project files', () => {
+    expect(parserFor('gradle.lockfile', 'empty=lock\n')).toBeUndefined();
+    expect(parserFor('app/gradle.lockfile', '')).toBeUndefined();
+    expect(parserFor('pom.xml', '<project/>')).toBeUndefined();
+    expect(parserFor('build.gradle', "plugins { id 'java' }\n")).toBeUndefined();
+    expect(parserFor('build.gradle.kts', 'plugins { id("java") }\n')).toBeUndefined();
+  });
 });

@@ -266,4 +266,39 @@ describe('run', () => {
   it('errors clearly when nothing is found', async () => {
     await expect(run(inputs(), fakeLookup)).rejects.toThrow(/no lockfiles or SBOMs found in the workspace/);
   });
+
+  it('skips unsupported Maven and Gradle files and checks only the npm lockfile', async () => {
+    await writeWorkspace({
+      'gradle.lockfile': 'empty=lock\n',
+      'pom.xml': '<project></project>\n',
+      'build.gradle': "plugins { id 'java' }\n",
+      'package-lock.json': packageLock({ lodash: '4.17.21' }),
+    });
+
+    const findings = await run(
+      inputs({ paths: ['gradle.lockfile', 'pom.xml', 'build.gradle', 'package-lock.json'] }),
+      fakeLookup,
+    );
+
+    expect(findings).toEqual([]);
+    expect(sentDependencies()).toEqual(['npm:lodash@4.17.21']);
+    expect(outputs()).toMatchObject({ 'checked-count': 1 });
+    expect(core.setFailed).not.toHaveBeenCalled();
+    for (const file of ['gradle.lockfile', 'pom.xml', 'build.gradle']) {
+      expect(core.warning).toHaveBeenCalledWith(expect.stringMatching(/unsupported file type/), { file });
+    }
+  });
+
+  // Pointing paths at only gradle.lockfile yields zero checked deps and the step still passes.
+  // The product fix job (bot/kev-check-gradle-lockfile) may change this to fail loudly.
+  it('passes with checked-count 0 when paths names only gradle.lockfile', async () => {
+    await writeWorkspace({ 'gradle.lockfile': 'empty=lock\n' });
+
+    await expect(run(inputs({ paths: ['gradle.lockfile'] }), fakeLookup)).resolves.toEqual([]);
+
+    expect(outputs()).toMatchObject({ 'checked-count': 0 });
+    expect(fakeLookup).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(expect.stringMatching(/unsupported file type/), { file: 'gradle.lockfile' });
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
 });
