@@ -97,10 +97,14 @@ export function renderSummary({ findings, checked, unchecked, files, skipped }: 
   return lines.join('\n') + '\n';
 }
 
-/** Best-effort line of the dependency in its manifest, so the annotation lands near it. */
+/**
+ * Best-effort line of the dependency in its manifest, so the annotation lands near it. The name must
+ * be a whole token: `react` is not `react-dom`, `lodash.merge`, or `@types/react`.
+ */
 export function lineOf(content: string, name: string, version: string): number | undefined {
+  const token = new RegExp(`(?<![\\w.@-])(?<!@[\\w.-]*/)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w./-])`);
   const lines = content.split(/\r?\n/);
-  const both = lines.findIndex((line) => line.includes(name) && line.includes(version));
-  const index = both !== -1 ? both : lines.findIndex((line) => line.includes(name));
+  const both = lines.findIndex((line) => token.test(line) && line.includes(version));
+  const index = both !== -1 ? both : lines.findIndex((line) => token.test(line));
   return index === -1 ? undefined : index + 1;
 }
