@@ -26917,7 +26917,7 @@ function info(message) {
 // package.json
 var package_default = {
   name: "firetruck-github-action",
-  version: "0.2.0",
+  version: "0.3.0",
   private: true,
   description: "Fail CI when a dependency is tied to a CISA Known Exploited Vulnerability, via the Firetruck API.",
   license: "MIT",
