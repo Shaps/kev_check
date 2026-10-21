@@ -25,7 +25,12 @@ export const pypiName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, 
 /** Only exact pins (`==`) resolve to one version; ranges are skipped rather than guessed. */
 export function parseRequirements(content: string): Dependency[] {
   return content.split(/\r?\n/).flatMap((raw) => {
-    const line = raw.replace(/(^|\s)#.*$/, '').split(';')[0]!.trim();
+    const line = raw
+      .replace(/(^|\s)#.*$/, '')
+      .split(';')[0]!
+      .replace(/\s+--.*$/, '')
+      .replace(/\s*\\$/, '')
+      .trim();
     const match = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*===?\s*([^\s,\\]+)$/);
     return match ? [{ ecosystem: 'pypi' as const, name: pypiName(match[1]!), version: match[2]! }] : [];
   });

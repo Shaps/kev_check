@@ -22,6 +22,19 @@ inputs:
       only warn and never fail the step.
     required: false
     default: 'true'
+  fail-on-skipped:
+    description: >
+      Fail the step when any file is skipped (unsupported type, malformed content, a symlink or
+      non-regular file outside the workspace, or an oversized file), or when a recognized lockfile
+      parses to no dependencies and nothing else was checked. Set to "false" to only warn.
+    required: false
+    default: 'true'
+  fail-on-unchecked:
+    description: >
+      Fail the step when any dependency was not checked (unsupported ecosystem, or an entry the API
+      rejected). Unverified dependencies never fail the step.
+    required: false
+    default: 'false'
   concurrency:
     description: Maximum number of batch requests (up to 100 dependencies each) in flight at once.
     required: false

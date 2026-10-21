@@ -10,15 +10,14 @@ on:
 permissions:
   contents: read
 
-env:
-  FIRETRUCK_API_KEY: ${{ secrets.FIRETRUCK_API_KEY }}
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -32,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: batch endpoint answers with verdicts
+        env:
+          FIRETRUCK_API_KEY: ${{ secrets.FIRETRUCK_API_KEY }}
         run: |
           set -euo pipefail
           key=()
@@ -56,7 +57,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: matrix
@@ -72,7 +73,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: ${{ matrix.ecosystem }} (${{ matrix.file }})
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: scan
@@ -97,7 +98,7 @@ jobs:
     needs: api-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: clean
@@ -147,7 +148,7 @@ jobs:
     needs: api-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./

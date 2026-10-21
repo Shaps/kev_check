@@ -589,10 +589,10 @@ var require_errors = __commonJS({
     };
     var kHTTPParserError = /* @__PURE__ */ Symbol.for("undici.error.UND_ERR_HTTP_PARSER");
     var HTTPParserError = class extends Error {
-      constructor(message, code, data) {
+      constructor(message, code2, data) {
         super(message);
         this.name = "HTTPParserError";
-        this.code = code ? `HPE_${code}` : void 0;
+        this.code = code2 ? `HPE_${code2}` : void 0;
         this.data = data ? data.toString() : void 0;
       }
       static [Symbol.hasInstance](instance) {
@@ -615,12 +615,12 @@ var require_errors = __commonJS({
     };
     var kRequestRetryError = /* @__PURE__ */ Symbol.for("undici.error.UND_ERR_REQ_RETRY");
     var RequestRetryError = class extends UndiciError {
-      constructor(message, code, { headers, data }) {
+      constructor(message, code2, { headers, data }) {
         super(message);
         this.name = "RequestRetryError";
         this.message = message || "Request retry error";
         this.code = "UND_ERR_REQ_RETRY";
-        this.statusCode = code;
+        this.statusCode = code2;
         this.data = data;
         this.headers = headers;
       }
@@ -631,12 +631,12 @@ var require_errors = __commonJS({
     };
     var kResponseError = /* @__PURE__ */ Symbol.for("undici.error.UND_ERR_RESPONSE");
     var ResponseError = class extends UndiciError {
-      constructor(message, code, { headers, data }) {
+      constructor(message, code2, { headers, data }) {
         super(message);
         this.name = "ResponseError";
         this.message = message || "Response error";
         this.code = "UND_ERR_RESPONSE";
-        this.statusCode = code;
+        this.statusCode = code2;
         this.data = data;
         this.headers = headers;
       }
@@ -846,8 +846,8 @@ var require_tree = __commonJS({
         if (index === void 0 || index >= key.length) {
           throw new TypeError("Unreachable");
         }
-        const code = this.code = key.charCodeAt(index);
-        if (code > 127) {
+        const code2 = this.code = key.charCodeAt(index);
+        if (code2 > 127) {
           throw new TypeError("key must be ascii string");
         }
         if (key.length !== ++index) {
@@ -868,11 +868,11 @@ var require_tree = __commonJS({
         let index = 0;
         let node = this;
         while (true) {
-          const code = key.charCodeAt(index);
-          if (code > 127) {
+          const code2 = key.charCodeAt(index);
+          if (code2 > 127) {
             throw new TypeError("key must be ascii string");
           }
-          if (node.code === code) {
+          if (node.code === code2) {
             if (length === ++index) {
               node.value = value;
               break;
@@ -882,7 +882,7 @@ var require_tree = __commonJS({
               node.middle = new _TstNode(key, value, index);
               break;
             }
-          } else if (node.code < code) {
+          } else if (node.code < code2) {
             if (node.left !== null) {
               node = node.left;
             } else {
@@ -906,19 +906,19 @@ var require_tree = __commonJS({
         let index = 0;
         let node = this;
         while (node !== null && index < keylength) {
-          let code = key[index];
-          if (code <= 90 && code >= 65) {
-            code |= 32;
+          let code2 = key[index];
+          if (code2 <= 90 && code2 >= 65) {
+            code2 |= 32;
           }
           while (node !== null) {
-            if (code === node.code) {
+            if (code2 === node.code) {
               if (keylength === ++index) {
                 return node;
               }
               node = node.middle;
               break;
             }
-            node = node.code < code ? node.left : node.right;
+            node = node.code < code2 ? node.left : node.right;
           }
         }
         return null;
@@ -1625,11 +1625,11 @@ var require_diagnostics = __commonJS({
         websocketDebuglog("connection opened %s%s", address, port ? `:${port}` : "");
       });
       diagnosticsChannel.channel("undici:websocket:close").subscribe((evt) => {
-        const { websocket, code, reason } = evt;
+        const { websocket, code: code2, reason } = evt;
         websocketDebuglog(
           "closed connection to %s - %s %s",
           websocket.url,
-          code,
+          code2,
           reason
         );
       });
@@ -2152,9 +2152,9 @@ var require_dispatcher_base = __commonJS({
       }
       close(callback) {
         if (callback === void 0) {
-          return new Promise((resolve2, reject) => {
+          return new Promise((resolve, reject) => {
             this.close((err, data) => {
-              return err ? reject(err) : resolve2(data);
+              return err ? reject(err) : resolve(data);
             });
           });
         }
@@ -2192,12 +2192,12 @@ var require_dispatcher_base = __commonJS({
           err = null;
         }
         if (callback === void 0) {
-          return new Promise((resolve2, reject) => {
+          return new Promise((resolve, reject) => {
             this.destroy(err, (err2, data) => {
               return err2 ? (
                 /* istanbul ignore next: should never error */
                 reject(err2)
-              ) : resolve2(data);
+              ) : resolve(data);
             });
           });
         }
@@ -4109,9 +4109,9 @@ var require_util2 = __commonJS({
     }
     function isValidEncodedURL(url) {
       for (let i = 0; i < url.length; ++i) {
-        const code = url.charCodeAt(i);
-        if (code > 126 || // Non-US-ASCII + DEL
-        code < 32) {
+        const code2 = url.charCodeAt(i);
+        if (code2 > 126 || // Non-US-ASCII + DEL
+        code2 < 32) {
           return false;
         }
       }
@@ -4464,8 +4464,8 @@ var require_util2 = __commonJS({
     function createDeferredPromise() {
       let res;
       let rej;
-      const promise = new Promise((resolve2, reject) => {
-        res = resolve2;
+      const promise = new Promise((resolve, reject) => {
+        res = resolve;
         rej = reject;
       });
       return { promise, resolve: res, reject: rej };
@@ -4702,8 +4702,8 @@ var require_util2 = __commonJS({
       }
       const rangeStart = collectASequenceOfCodePoints(
         (char) => {
-          const code = char.charCodeAt(0);
-          return code >= 48 && code <= 57;
+          const code2 = char.charCodeAt(0);
+          return code2 >= 48 && code2 <= 57;
         },
         data,
         position
@@ -4729,8 +4729,8 @@ var require_util2 = __commonJS({
       }
       const rangeEnd = collectASequenceOfCodePoints(
         (char) => {
-          const code = char.charCodeAt(0);
-          return code >= 48 && code <= 57;
+          const code2 = char.charCodeAt(0);
+          return code2 >= 48 && code2 <= 57;
         },
         data,
         position
@@ -6717,12 +6717,12 @@ upgrade: ${upgrade}\r
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve2, reject) => {
+      const waitForDrain = () => new Promise((resolve, reject) => {
         assert4(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve2;
+          callback = resolve;
         }
       });
       socket.on("close", onDrain).on("drain", onDrain);
@@ -7024,9 +7024,9 @@ var require_client_h2 = __commonJS({
       this[kSocket][kError] = err;
       this[kClient][kOnError](err);
     }
-    function onHttp2FrameError(type, code, id) {
+    function onHttp2FrameError(type, code2, id) {
       if (id === 0) {
-        const err = new InformationalError(`HTTP/2: "frameError" received - type ${type}, code ${code}`);
+        const err = new InformationalError(`HTTP/2: "frameError" received - type ${type}, code ${code2}`);
         this[kSocket][kError] = err;
         this[kClient][kOnError](err);
       }
@@ -7036,8 +7036,8 @@ var require_client_h2 = __commonJS({
       this.destroy(err);
       util.destroy(this[kSocket], err);
     }
-    function onHTTP2GoAway(code) {
-      const err = this[kError] || new SocketError(`HTTP/2: "GOAWAY" frame received with code ${code}`, util.getSocketInfo(this));
+    function onHTTP2GoAway(code2) {
+      const err = this[kError] || new SocketError(`HTTP/2: "GOAWAY" frame received with code ${code2}`, util.getSocketInfo(this));
       const client = this[kClient];
       client[kSocket] = null;
       client[kHTTPContext] = null;
@@ -7242,8 +7242,8 @@ var require_client_h2 = __commonJS({
       stream.once("error", function(err) {
         abort(err);
       });
-      stream.once("frameError", (type, code) => {
-        abort(new InformationalError(`HTTP/2: "frameError" received - type ${type}, code ${code}`));
+      stream.once("frameError", (type, code2) => {
+        abort(new InformationalError(`HTTP/2: "frameError" received - type ${type}, code ${code2}`));
       });
       return true;
       function writeBodyH2() {
@@ -7394,12 +7394,12 @@ var require_client_h2 = __commonJS({
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve2, reject) => {
+      const waitForDrain = () => new Promise((resolve, reject) => {
         assert4(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve2;
+          callback = resolve;
         }
       });
       h2stream.on("close", onDrain).on("drain", onDrain);
@@ -7877,16 +7877,16 @@ var require_client = __commonJS({
         return this[kNeedDrain] < 2;
       }
       async [kClose]() {
-        return new Promise((resolve2) => {
+        return new Promise((resolve) => {
           if (this[kSize]) {
-            this[kClosedResolve] = resolve2;
+            this[kClosedResolve] = resolve;
           } else {
-            resolve2(null);
+            resolve(null);
           }
         });
       }
       async [kDestroy](err) {
-        return new Promise((resolve2) => {
+        return new Promise((resolve) => {
           const requests = this[kQueue].splice(this[kPendingIdx]);
           for (let i = 0; i < requests.length; i++) {
             const request = requests[i];
@@ -7897,7 +7897,7 @@ var require_client = __commonJS({
               this[kClosedResolve]();
               this[kClosedResolve] = null;
             }
-            resolve2(null);
+            resolve(null);
           };
           if (this[kHTTPContext]) {
             this[kHTTPContext].destroy(err, callback);
@@ -7948,7 +7948,7 @@ var require_client = __commonJS({
         });
       }
       try {
-        const socket = await new Promise((resolve2, reject) => {
+        const socket = await new Promise((resolve, reject) => {
           client[kConnector]({
             host,
             hostname,
@@ -7960,7 +7960,7 @@ var require_client = __commonJS({
             if (err) {
               reject(err);
             } else {
-              resolve2(socket2);
+              resolve(socket2);
             }
           });
         });
@@ -8296,8 +8296,8 @@ var require_pool_base = __commonJS({
         if (this[kQueue].isEmpty()) {
           await Promise.all(this[kClients].map((c) => c.close()));
         } else {
-          await new Promise((resolve2) => {
-            this[kClosedResolve] = resolve2;
+          await new Promise((resolve) => {
+            this[kClosedResolve] = resolve;
           });
         }
       }
@@ -9177,7 +9177,7 @@ var require_retry_handler = __commonJS({
         if (this.handler.onBodySent) return this.handler.onBodySent(chunk);
       }
       static [kRetryHandlerDefaultRetry](err, { state, opts }, cb) {
-        const { statusCode, code, headers } = err;
+        const { statusCode, code: code2, headers } = err;
         const { method, retryOptions } = opts;
         const {
           maxRetries,
@@ -9189,7 +9189,7 @@ var require_retry_handler = __commonJS({
           methods
         } = retryOptions;
         const { counter } = state;
-        if (code && code !== "UND_ERR_REQ_RETRY" && !errorCodes.includes(code)) {
+        if (code2 && code2 !== "UND_ERR_REQ_RETRY" && !errorCodes.includes(code2)) {
           cb(err);
           return;
         }
@@ -9563,7 +9563,7 @@ var require_readable = __commonJS({
         if (this._readableState.closeEmitted) {
           return null;
         }
-        return await new Promise((resolve2, reject) => {
+        return await new Promise((resolve, reject) => {
           if (this[kContentLength] > limit) {
             this.destroy(new AbortError());
           }
@@ -9576,7 +9576,7 @@ var require_readable = __commonJS({
             if (signal?.aborted) {
               reject(signal.reason ?? new AbortError());
             } else {
-              resolve2(null);
+              resolve(null);
             }
           }).on("error", noop).on("data", function(chunk) {
             limit -= chunk.length;
@@ -9595,7 +9595,7 @@ var require_readable = __commonJS({
     }
     async function consume(stream, type) {
       assert4(!stream[kConsume]);
-      return new Promise((resolve2, reject) => {
+      return new Promise((resolve, reject) => {
         if (isUnusable(stream)) {
           const rState = stream._readableState;
           if (rState.destroyed && rState.closeEmitted === false) {
@@ -9612,7 +9612,7 @@ var require_readable = __commonJS({
             stream[kConsume] = {
               type,
               stream,
-              resolve: resolve2,
+              resolve,
               reject,
               length: 0,
               body: []
@@ -9682,18 +9682,18 @@ var require_readable = __commonJS({
       return buffer;
     }
     function consumeEnd(consume2) {
-      const { type, body, resolve: resolve2, stream, length } = consume2;
+      const { type, body, resolve, stream, length } = consume2;
       try {
         if (type === "text") {
-          resolve2(chunksDecode(body, length));
+          resolve(chunksDecode(body, length));
         } else if (type === "json") {
-          resolve2(JSON.parse(chunksDecode(body, length)));
+          resolve(JSON.parse(chunksDecode(body, length)));
         } else if (type === "arrayBuffer") {
-          resolve2(chunksConcat(body, length).buffer);
+          resolve(chunksConcat(body, length).buffer);
         } else if (type === "blob") {
-          resolve2(new Blob(body, { type: stream[kContentType] }));
+          resolve(new Blob(body, { type: stream[kContentType] }));
         } else if (type === "bytes") {
-          resolve2(chunksConcat(body, length));
+          resolve(chunksConcat(body, length));
         }
         consumeFinish(consume2);
       } catch (err) {
@@ -9950,9 +9950,9 @@ var require_api_request = __commonJS({
     };
     function request(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve, reject) => {
           request.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve2(data);
+            return err ? reject(err) : resolve(data);
           });
         });
       }
@@ -10175,9 +10175,9 @@ var require_api_stream = __commonJS({
     };
     function stream(opts, factory, callback) {
       if (callback === void 0) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve, reject) => {
           stream.call(this, opts, factory, (err, data) => {
-            return err ? reject(err) : resolve2(data);
+            return err ? reject(err) : resolve(data);
           });
         });
       }
@@ -10462,9 +10462,9 @@ var require_api_upgrade = __commonJS({
     };
     function upgrade(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve, reject) => {
           upgrade.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve2(data);
+            return err ? reject(err) : resolve(data);
           });
         });
       }
@@ -10556,9 +10556,9 @@ var require_api_connect = __commonJS({
     };
     function connect(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve, reject) => {
           connect.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve2(data);
+            return err ? reject(err) : resolve(data);
           });
         });
       }
@@ -11932,8 +11932,8 @@ var require_headers = __commonJS({
     var util = __require("node:util");
     var kHeadersMap = /* @__PURE__ */ Symbol("headers map");
     var kHeadersSortedMap = /* @__PURE__ */ Symbol("headers map sorted");
-    function isHTTPWhiteSpaceCharCode(code) {
-      return code === 10 || code === 13 || code === 9 || code === 32;
+    function isHTTPWhiteSpaceCharCode(code2) {
+      return code2 === 10 || code2 === 13 || code2 === 9 || code2 === 32;
     }
     function headerValueNormalize(potentialValue) {
       let i = 0;
@@ -14420,7 +14420,7 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        return new Promise((resolve2, reject) => agent.dispatch(
+        return new Promise((resolve, reject) => agent.dispatch(
           {
             path: url.pathname + url.search,
             origin: url.origin,
@@ -14496,7 +14496,7 @@ var require_fetch = __commonJS({
                 }
               }
               const onError = this.onError.bind(this);
-              resolve2({
+              resolve({
                 status,
                 statusText,
                 headersList,
@@ -14542,7 +14542,7 @@ var require_fetch = __commonJS({
               for (let i = 0; i < rawHeaders.length; i += 2) {
                 headersList.append(bufferToLowerCasedHeaderName(rawHeaders[i]), rawHeaders[i + 1].toString("latin1"), true);
               }
-              resolve2({
+              resolve({
                 status,
                 statusText: STATUS_CODES[status],
                 headersList,
@@ -16090,8 +16090,8 @@ var require_util6 = __commonJS({
     "use strict";
     function isCTLExcludingHtab(value) {
       for (let i = 0; i < value.length; ++i) {
-        const code = value.charCodeAt(i);
-        if (code >= 0 && code <= 8 || code >= 10 && code <= 31 || code === 127) {
+        const code2 = value.charCodeAt(i);
+        if (code2 >= 0 && code2 <= 8 || code2 >= 10 && code2 <= 31 || code2 === 127) {
           return true;
         }
       }
@@ -16099,26 +16099,26 @@ var require_util6 = __commonJS({
     }
     function validateCookieName(name) {
       for (let i = 0; i < name.length; ++i) {
-        const code = name.charCodeAt(i);
-        if (code < 33 || // exclude CTLs (0-31), SP and HT
-        code > 126 || // exclude non-ascii and DEL
-        code === 34 || // "
-        code === 40 || // (
-        code === 41 || // )
-        code === 60 || // <
-        code === 62 || // >
-        code === 64 || // @
-        code === 44 || // ,
-        code === 59 || // ;
-        code === 58 || // :
-        code === 92 || // \
-        code === 47 || // /
-        code === 91 || // [
-        code === 93 || // ]
-        code === 63 || // ?
-        code === 61 || // =
-        code === 123 || // {
-        code === 125) {
+        const code2 = name.charCodeAt(i);
+        if (code2 < 33 || // exclude CTLs (0-31), SP and HT
+        code2 > 126 || // exclude non-ascii and DEL
+        code2 === 34 || // "
+        code2 === 40 || // (
+        code2 === 41 || // )
+        code2 === 60 || // <
+        code2 === 62 || // >
+        code2 === 64 || // @
+        code2 === 44 || // ,
+        code2 === 59 || // ;
+        code2 === 58 || // :
+        code2 === 92 || // \
+        code2 === 47 || // /
+        code2 === 91 || // [
+        code2 === 93 || // ]
+        code2 === 63 || // ?
+        code2 === 61 || // =
+        code2 === 123 || // {
+        code2 === 125) {
           throw new Error("Invalid cookie name");
         }
       }
@@ -16134,31 +16134,31 @@ var require_util6 = __commonJS({
         ++i;
       }
       while (i < len) {
-        const code = value.charCodeAt(i++);
-        if (code < 33 || // exclude CTLs (0-31)
-        code > 126 || // non-ascii and DEL (127)
-        code === 34 || // "
-        code === 44 || // ,
-        code === 59 || // ;
-        code === 92) {
+        const code2 = value.charCodeAt(i++);
+        if (code2 < 33 || // exclude CTLs (0-31)
+        code2 > 126 || // non-ascii and DEL (127)
+        code2 === 34 || // "
+        code2 === 44 || // ,
+        code2 === 59 || // ;
+        code2 === 92) {
           throw new Error("Invalid cookie value");
         }
       }
     }
     function validateCookiePath(path6) {
       for (let i = 0; i < path6.length; ++i) {
-        const code = path6.charCodeAt(i);
-        if (code < 32 || // exclude CTLs (0-31)
-        code > 126 || // exclude DEL and non-ascii
-        code === 59) {
+        const code2 = path6.charCodeAt(i);
+        if (code2 < 32 || // exclude CTLs (0-31)
+        code2 > 126 || // exclude DEL and non-ascii
+        code2 === 59) {
           throw new Error("Invalid cookie path");
         }
       }
     }
-    function isLetterOrDigit(code) {
-      return code >= 48 && code <= 57 || // 0-9
-      code >= 65 && code <= 90 || // A-Z
-      code >= 97 && code <= 122;
+    function isLetterOrDigit(code2) {
+      return code2 >= 48 && code2 <= 57 || // 0-9
+      code2 >= 65 && code2 <= 90 || // A-Z
+      code2 >= 97 && code2 <= 122;
     }
     function validateCookieDomain(domain) {
       if (domain === " ") {
@@ -16169,8 +16169,8 @@ var require_util6 = __commonJS({
       }
       let labelLength = 0;
       for (let i = 0; i < domain.length; ++i) {
-        const code = domain.charCodeAt(i);
-        if (code === 46) {
+        const code2 = domain.charCodeAt(i);
+        if (code2 === 46) {
           if (labelLength === 0) {
             throw new Error("Invalid cookie domain");
           }
@@ -16180,10 +16180,10 @@ var require_util6 = __commonJS({
           labelLength = 0;
           continue;
         }
-        if (labelLength === 0 && !isLetterOrDigit(code)) {
+        if (labelLength === 0 && !isLetterOrDigit(code2)) {
           throw new Error("Invalid cookie domain");
         }
-        if (!isLetterOrDigit(code) && code !== 45) {
+        if (!isLetterOrDigit(code2) && code2 !== 45) {
           throw new Error("Invalid cookie domain");
         }
         if (++labelLength > 63) {
@@ -16957,37 +16957,37 @@ var require_util7 = __commonJS({
         return false;
       }
       for (let i = 0; i < protocol.length; ++i) {
-        const code = protocol.charCodeAt(i);
-        if (code < 33 || // CTL, contains SP (0x20) and HT (0x09)
-        code > 126 || code === 34 || // "
-        code === 40 || // (
-        code === 41 || // )
-        code === 44 || // ,
-        code === 47 || // /
-        code === 58 || // :
-        code === 59 || // ;
-        code === 60 || // <
-        code === 61 || // =
-        code === 62 || // >
-        code === 63 || // ?
-        code === 64 || // @
-        code === 91 || // [
-        code === 92 || // \
-        code === 93 || // ]
-        code === 123 || // {
-        code === 125) {
+        const code2 = protocol.charCodeAt(i);
+        if (code2 < 33 || // CTL, contains SP (0x20) and HT (0x09)
+        code2 > 126 || code2 === 34 || // "
+        code2 === 40 || // (
+        code2 === 41 || // )
+        code2 === 44 || // ,
+        code2 === 47 || // /
+        code2 === 58 || // :
+        code2 === 59 || // ;
+        code2 === 60 || // <
+        code2 === 61 || // =
+        code2 === 62 || // >
+        code2 === 63 || // ?
+        code2 === 64 || // @
+        code2 === 91 || // [
+        code2 === 92 || // \
+        code2 === 93 || // ]
+        code2 === 123 || // {
+        code2 === 125) {
           return false;
         }
       }
       return true;
     }
-    function isValidStatusCode(code) {
-      if (code >= 1e3 && code < 1015) {
-        return code !== 1004 && // reserved
-        code !== 1005 && // "MUST NOT be set as a status code"
-        code !== 1006;
+    function isValidStatusCode(code2) {
+      if (code2 >= 1e3 && code2 < 1015) {
+        return code2 !== 1004 && // reserved
+        code2 !== 1005 && // "MUST NOT be set as a status code"
+        code2 !== 1006;
       }
-      return code >= 3e3 && code <= 4999;
+      return code2 >= 3e3 && code2 <= 4999;
     }
     function failWebsocketConnection(ws, reason) {
       const { [kController]: controller, [kResponse]: response } = ws;
@@ -17256,7 +17256,7 @@ var require_connection = __commonJS({
       });
       return controller;
     }
-    function closeWebSocketConnection(ws, code, reason, reasonByteLength) {
+    function closeWebSocketConnection(ws, code2, reason, reasonByteLength) {
       if (isClosing(ws) || isClosed(ws)) {
       } else if (!isEstablished(ws)) {
         failWebsocketConnection(ws, "Connection was closed before it was established.");
@@ -17264,12 +17264,12 @@ var require_connection = __commonJS({
       } else if (ws[kSentClose] === sentCloseFrameState.NOT_SENT) {
         ws[kSentClose] = sentCloseFrameState.PROCESSING;
         const frame = new WebsocketFrameSend();
-        if (code !== void 0 && reason === void 0) {
+        if (code2 !== void 0 && reason === void 0) {
           frame.frameData = Buffer.allocUnsafe(2);
-          frame.frameData.writeUInt16BE(code, 0);
-        } else if (code !== void 0 && reason !== void 0) {
+          frame.frameData.writeUInt16BE(code2, 0);
+        } else if (code2 !== void 0 && reason !== void 0) {
           frame.frameData = Buffer.allocUnsafe(2 + reasonByteLength);
-          frame.frameData.writeUInt16BE(code, 0);
+          frame.frameData.writeUInt16BE(code2, 0);
           frame.frameData.write(reason, 2, "utf-8");
         } else {
           frame.frameData = emptyBuffer;
@@ -17294,25 +17294,25 @@ var require_connection = __commonJS({
       response.socket.off("close", onSocketClose);
       response.socket.off("error", onSocketError);
       const wasClean = ws[kSentClose] === sentCloseFrameState.SENT && ws[kReceivedClose];
-      let code = 1005;
+      let code2 = 1005;
       let reason = "";
       const result = ws[kByteParser].closingInfo;
       if (result && !result.error) {
-        code = result.code ?? 1005;
+        code2 = result.code ?? 1005;
         reason = result.reason;
       } else if (!ws[kReceivedClose]) {
-        code = 1006;
+        code2 = 1006;
       }
       ws[kReadyState] = states.CLOSED;
       fireEvent("close", ws, (type, init) => new CloseEvent(type, init), {
         wasClean,
-        code,
+        code: code2,
         reason
       });
       if (channels.close.hasSubscribers) {
         channels.close.publish({
           websocket: ws,
-          code,
+          code: code2,
           reason
         });
       }
@@ -17437,8 +17437,8 @@ var require_receiver = __commonJS({
     var { closeWebSocketConnection } = require_connection();
     var { PerMessageDeflate } = require_permessage_deflate();
     var { MessageSizeExceededError } = require_errors();
-    function failWebsocketConnectionWithCode(ws, code, reason) {
-      closeWebSocketConnection(ws, code, reason, Buffer.byteLength(reason));
+    function failWebsocketConnectionWithCode(ws, code2, reason) {
+      closeWebSocketConnection(ws, code2, reason, Buffer.byteLength(reason));
       failWebsocketConnection(ws, reason);
     }
     var ByteParser = class extends Writable {
@@ -17615,8 +17615,8 @@ var require_receiver = __commonJS({
                   this.#info.fin,
                   (error2, data) => {
                     if (error2) {
-                      const code = error2 instanceof MessageSizeExceededError ? 1009 : 1007;
-                      failWebsocketConnectionWithCode(this.ws, code, error2.message);
+                      const code2 = error2 instanceof MessageSizeExceededError ? 1009 : 1007;
+                      failWebsocketConnectionWithCode(this.ws, code2, error2.message);
                       return;
                     }
                     if (!this.writeFragments(data)) {
@@ -17702,11 +17702,11 @@ var require_receiver = __commonJS({
       }
       parseCloseBody(data) {
         assert4(data.length !== 1);
-        let code;
+        let code2;
         if (data.length >= 2) {
-          code = data.readUInt16BE(0);
+          code2 = data.readUInt16BE(0);
         }
-        if (code !== void 0 && !isValidStatusCode(code)) {
+        if (code2 !== void 0 && !isValidStatusCode(code2)) {
           return { code: 1002, reason: "Invalid status code", error: true };
         }
         let reason = data.subarray(2);
@@ -17718,7 +17718,7 @@ var require_receiver = __commonJS({
         } catch {
           return { code: 1007, reason: "Invalid UTF-8", error: true };
         }
-        return { code, reason, error: false };
+        return { code: code2, reason, error: false };
       }
       /**
        * Parses control frames.
@@ -17733,8 +17733,8 @@ var require_receiver = __commonJS({
           }
           this.#info.closeInfo = this.parseCloseBody(body);
           if (this.#info.closeInfo.error) {
-            const { code, reason } = this.#info.closeInfo;
-            closeWebSocketConnection(this.ws, code, reason, reason.length);
+            const { code: code2, reason } = this.#info.closeInfo;
+            closeWebSocketConnection(this.ws, code2, reason, reason.length);
             failWebsocketConnection(this.ws, reason);
             return false;
           }
@@ -17972,17 +17972,17 @@ var require_websocket = __commonJS({
        * @param {number|undefined} code
        * @param {string|undefined} reason
        */
-      close(code = void 0, reason = void 0) {
+      close(code2 = void 0, reason = void 0) {
         webidl.brandCheck(this, _WebSocket);
         const prefix = "WebSocket.close";
-        if (code !== void 0) {
-          code = webidl.converters["unsigned short"](code, prefix, "code", { clamp: true });
+        if (code2 !== void 0) {
+          code2 = webidl.converters["unsigned short"](code2, prefix, "code", { clamp: true });
         }
         if (reason !== void 0) {
           reason = webidl.converters.USVString(reason, prefix, "reason");
         }
-        if (code !== void 0) {
-          if (code !== 1e3 && (code < 3e3 || code > 4999)) {
+        if (code2 !== void 0) {
+          if (code2 !== 1e3 && (code2 < 3e3 || code2 > 4999)) {
             throw new DOMException("invalid code", "InvalidAccessError");
           }
         }
@@ -17996,7 +17996,7 @@ var require_websocket = __commonJS({
             );
           }
         }
-        closeWebSocketConnection(this, code, reason, reasonByteLength);
+        closeWebSocketConnection(this, code2, reason, reasonByteLength);
       }
       /**
        * @see https://websockets.spec.whatwg.org/#dom-websocket-send
@@ -18242,15 +18242,15 @@ var require_websocket = __commonJS({
     }
     function onParserError(err) {
       let message;
-      let code;
+      let code2;
       if (err instanceof CloseEvent) {
         message = err.reason;
-        code = err.code;
+        code2 = err.code;
       } else {
         message = err.message;
       }
       fireEvent("error", this, () => new ErrorEvent("error", { error: err, message }));
-      closeWebSocketConnection(this, code);
+      closeWebSocketConnection(this, code2);
     }
     module.exports = {
       WebSocket
@@ -18273,8 +18273,8 @@ var require_util8 = __commonJS({
       return true;
     }
     function delay(ms) {
-      return new Promise((resolve2) => {
-        setTimeout(resolve2, ms).unref();
+      return new Promise((resolve) => {
+        setTimeout(resolve, ms).unref();
       });
     }
     module.exports = {
@@ -20211,8 +20211,8 @@ var require_stringifyString = __commonJS({
             case "u":
               {
                 str += json.slice(start, i);
-                const code = json.substr(i + 2, 4);
-                switch (code) {
+                const code2 = json.substr(i + 2, 4);
+                switch (code2) {
                   case "0000":
                     str += "\\0";
                     break;
@@ -20238,8 +20238,8 @@ var require_stringifyString = __commonJS({
                     str += "\\P";
                     break;
                   default:
-                    if (code.substr(0, 2) === "00")
-                      str += "\\x" + code.substr(2);
+                    if (code2.substr(0, 2) === "00")
+                      str += "\\x" + code2.substr(2);
                     else
                       str += json.substr(i, 6);
                 }
@@ -22738,22 +22738,22 @@ var require_errors2 = __commonJS({
   "node_modules/yaml/dist/errors.js"(exports) {
     "use strict";
     var YAMLError = class extends Error {
-      constructor(name, pos, code, message) {
+      constructor(name, pos, code2, message) {
         super();
         this.name = name;
-        this.code = code;
+        this.code = code2;
         this.message = message;
         this.pos = pos;
       }
     };
     var YAMLParseError = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLParseError", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLParseError", pos, code2, message);
       }
     };
     var YAMLWarning = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLWarning", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLWarning", pos, code2, message);
       }
     };
     var prettifyError = (src, lc) => (error2) => {
@@ -23027,10 +23027,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep5, value } = collItem;
+        const { start, key, sep: sep6, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -23044,7 +23044,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep5) {
+          if (!keyProps.anchor && !keyProps.tag && !sep6) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -23068,7 +23068,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -23084,7 +23084,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep5, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -23175,7 +23175,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep5 = "";
+        let sep6 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -23189,13 +23189,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep5 + cb;
-              sep5 = "";
+                comment += sep6 + cb;
+              sep6 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep5 += source;
+                sep6 += source;
               hasSpace = true;
               break;
             default:
@@ -23238,18 +23238,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep5, value } = collItem;
+        const { start, key, sep: sep6, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep5 && !value) {
+          if (!props.anchor && !props.tag && !sep6 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -23303,8 +23303,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep5 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep5, null, props, onError);
+        if (!isMap && !sep6 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -23316,7 +23316,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -23327,8 +23327,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep5)
-                for (const st of sep5) {
+              if (sep6)
+                for (const st of sep6) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -23345,7 +23345,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -23525,7 +23525,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep5 = "";
+      let sep6 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -23542,24 +23542,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep5 === " ")
-            sep5 = "\n";
-          else if (!prevMoreIndented && sep5 === "\n")
-            sep5 = "\n\n";
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          if (sep6 === " ")
+            sep6 = "\n";
+          else if (!prevMoreIndented && sep6 === "\n")
+            sep6 = "\n\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep5 === "\n")
+          if (sep6 === "\n")
             value += "\n";
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          value += sep5 + content;
-          sep5 = " ";
+          value += sep6 + content;
+          sep6 = " ";
           prevMoreIndented = false;
         }
       }
@@ -23662,7 +23662,7 @@ var require_resolve_flow_scalar = __commonJS({
       const { offset, type, source, end } = scalar;
       let _type;
       let value;
-      const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
+      const _onError = (rel, code2, msg) => onError(offset + rel, code2, msg);
       switch (type) {
         case "scalar":
           _type = Scalar.Scalar.PLAIN;
@@ -23742,25 +23742,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match3[1].replace(trimEnd, "");
-      let sep5 = " ";
+      let sep6 = " ";
       let pos = line.lastIndex;
       while (match3 = line.exec(source)) {
         const lm = match3[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep5 === "\n")
-            res += sep5;
+          if (sep6 === "\n")
+            res += sep6;
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          res += sep5 + lm;
-          sep5 = " ";
+          res += sep6 + lm;
+          sep6 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match3 = last.exec(source);
-      return res + sep5 + (match3?.[1] ?? "");
+      return res + sep6 + (match3?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -23860,9 +23860,9 @@ var require_resolve_flow_scalar = __commonJS({
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
       const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok ? parseInt(cc, 16) : NaN;
+      const code2 = ok ? parseInt(cc, 16) : NaN;
       try {
-        return String.fromCodePoint(code);
+        return String.fromCodePoint(code2);
       } catch {
         const raw = source.substr(offset - 2, length + 2);
         onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
@@ -24184,12 +24184,12 @@ var require_composer = __commonJS({
         this.prelude = [];
         this.errors = [];
         this.warnings = [];
-        this.onError = (source, code, message, warning2) => {
+        this.onError = (source, code2, message, warning2) => {
           const pos = getErrorPos(source);
           if (warning2)
-            this.warnings.push(new errors.YAMLWarning(pos, code, message));
+            this.warnings.push(new errors.YAMLWarning(pos, code2, message));
           else
-            this.errors.push(new errors.YAMLParseError(pos, code, message));
+            this.errors.push(new errors.YAMLParseError(pos, code2, message));
         };
         this.directives = new directives.Directives({ version: options.version || "1.2" });
         this.options = options;
@@ -24351,12 +24351,12 @@ var require_cst_scalar = __commonJS({
     var stringifyString = require_stringifyString();
     function resolveAsScalar(token, strict = true, onError) {
       if (token) {
-        const _onError = (pos, code, message) => {
+        const _onError = (pos, code2, message) => {
           const offset = typeof pos === "number" ? pos : Array.isArray(pos) ? pos[0] : pos.offset;
           if (onError)
-            onError(offset, code, message);
+            onError(offset, code2, message);
           else
-            throw new errors.YAMLParseError([offset, offset + 1], code, message);
+            throw new errors.YAMLParseError([offset, offset + 1], code2, message);
         };
         switch (token.type) {
           case "scalar":
@@ -24570,14 +24570,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep5, value }) {
+    function stringifyItem({ start, key, sep: sep6, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep5)
-        for (const st of sep5)
+      if (sep6)
+        for (const st of sep6)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -25744,18 +25744,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep5;
+          let sep6;
           if (scalar.end) {
-            sep5 = scalar.end;
-            sep5.push(this.sourceToken);
+            sep6 = scalar.end;
+            sep6.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep5 = [this.sourceToken];
+            sep6 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep5 }]
+            items: [{ start, key: scalar, sep: sep6 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -25908,15 +25908,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep5 = it.sep;
-                  sep5.push(this.sourceToken);
+                  const sep6 = it.sep;
+                  sep6.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep5 }]
+                    items: [{ start: start2, key, sep: sep6 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -26110,13 +26110,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep5 = fc.end.splice(1, fc.end.length);
-            sep5.push(this.sourceToken);
+            const sep6 = fc.end.splice(1, fc.end.length);
+            sep6.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep5 }]
+              items: [{ start, key: fc, sep: sep6 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -26556,11 +26556,11 @@ import { EOL as EOL3 } from "os";
 import { constants, promises } from "fs";
 var __awaiter = function(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve2) {
-      resolve2(value);
+    return value instanceof P ? value : new P(function(resolve) {
+      resolve(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve2, reject) {
+  return new (P || (P = Promise))(function(resolve, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -26576,7 +26576,7 @@ var __awaiter = function(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve2(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -26706,9 +26706,9 @@ var Summary = class {
    *
    * @returns {Summary} summary instance
    */
-  addCodeBlock(code, lang) {
+  addCodeBlock(code2, lang) {
     const attrs = Object.assign({}, lang && { lang });
-    const element = this.wrap("pre", this.wrap("code", code), attrs);
+    const element = this.wrap("pre", this.wrap("code", code2), attrs);
     return this.addRaw(element).addEOL();
   }
   /**
@@ -26914,14 +26914,10 @@ function info(message) {
   process.stdout.write(message + os4.EOL);
 }
 
-// src/main.ts
-import { readFile as readFile2 } from "node:fs/promises";
-import { resolve } from "node:path";
-
 // package.json
 var package_default = {
   name: "firetruck-github-action",
-  version: "0.2.0",
+  version: "0.3.0",
   private: true,
   description: "Fail CI when a dependency is tied to a CISA Known Exploited Vulnerability, via the Firetruck API.",
   license: "MIT",
@@ -26962,19 +26958,26 @@ var FiretruckError = class extends Error {
 };
 var DEFAULT_API_URL = "https://api.firetruck.dev";
 var BATCH_SIZE = 100;
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var verdicts = /* @__PURE__ */ new Set(["yes", "no", "unverified"]);
 function toResult(item, dependency) {
-  const { verdict, kevs, matches, error: error2 } = item ?? {};
-  if (error2 && typeof error2 === "object") {
-    return { verdict: "unchecked", reason: error2.message || error2.code || "rejected by the API" };
+  const unexpected = () => new FiretruckError(`unexpected response for ${dependency.name}@${dependency.version}`);
+  if (!isObject(item)) throw unexpected();
+  if ("error" in item) {
+    const { error: error2 } = item;
+    if (!isObject(error2) || typeof error2.code !== "string" || typeof error2.message !== "string") throw unexpected();
+    return { verdict: "unchecked", reason: error2.message || error2.code };
   }
-  if (typeof verdict !== "string" || !verdicts.has(verdict) || !Array.isArray(kevs)) {
-    throw new FiretruckError(`unexpected response for ${dependency.name}@${dependency.version}`);
+  const { verdict, kevs, matches } = item;
+  if (typeof verdict !== "string" || !verdicts.has(verdict)) throw unexpected();
+  if (!Array.isArray(kevs) || !kevs.every((kev) => typeof kev === "string")) throw unexpected();
+  if (matches !== void 0 && (!Array.isArray(matches) || !matches.every((m) => isObject(m) && typeof m.cve_id === "string" && (m.verdict === "yes" || m.verdict === "unverified")))) {
+    throw unexpected();
   }
-  const unverifiedKevs = (Array.isArray(matches) ? matches : []).filter((m) => m?.verdict === "unverified" && typeof m.cve_id === "string").map((m) => m.cve_id);
-  return { verdict, kevs: kevs.map(String), unverifiedKevs: [...new Set(unverifiedKevs)] };
+  const unverifiedKevs = (matches ?? []).filter((m) => m.verdict === "unverified").map((m) => m.cve_id);
+  return { verdict, kevs, unverifiedKevs: [...new Set(unverifiedKevs)] };
 }
-var defaultSleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
+var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function createClient(options) {
   const {
     apiUrl = DEFAULT_API_URL,
@@ -26982,13 +26985,22 @@ function createClient(options) {
     fetch: doFetch = fetch,
     sleep = defaultSleep,
     maxRateLimitWaitMs = 6e4,
-    maxAttempts = 4
+    maxAttempts = 4,
+    requestTimeoutMs = 3e4,
+    deadlineMs = 3e5
   } = options;
   const endpoint = new URL("/v1/packages/kevs/batch", apiUrl).toString();
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": userAgent(),
     ...apiKey ? { "X-API-Key": apiKey } : {}
+  };
+  const deadline = AbortSignal.timeout(deadlineMs);
+  const deadlineAt = Date.now() + deadlineMs;
+  const outOfTime = () => new FiretruckError(`the Firetruck API did not finish within ${deadlineMs / 1e3}s`);
+  const pause = async (ms) => {
+    if (Date.now() + ms >= deadlineAt) throw outOfTime();
+    await sleep(ms);
   };
   return async function lookup(dependencies) {
     const body = JSON.stringify({
@@ -26997,25 +27009,47 @@ function createClient(options) {
     for (let attempt = 1; ; attempt++) {
       let response;
       try {
-        response = await doFetch(endpoint, { method: "POST", headers, body });
+        response = await doFetch(endpoint, {
+          method: "POST",
+          headers,
+          body,
+          redirect: "error",
+          signal: AbortSignal.any([AbortSignal.timeout(requestTimeoutMs), deadline])
+        });
       } catch (error2) {
-        if (attempt >= maxAttempts) throw new FiretruckError(`could not reach ${endpoint}: ${String(error2)}`);
-        await sleep(2 ** attempt * 500);
+        if (deadline.aborted) throw outOfTime();
+        if (attempt >= maxAttempts) {
+          const cause = error2 instanceof Error && error2.cause instanceof Error ? ` (${error2.cause.message})` : "";
+          throw new FiretruckError(`could not reach ${endpoint}: ${String(error2)}${cause}`);
+        }
+        await pause(2 ** attempt * 500);
         continue;
       }
       if (response.ok) {
-        const { results } = await response.json().catch(() => ({}));
+        const payload = await response.json().catch(() => void 0);
+        if (deadline.aborted) throw outOfTime();
+        if (payload === void 0) {
+          if (attempt >= maxAttempts) throw new FiretruckError("unexpected response: non-JSON response from the API");
+          await pause(2 ** attempt * 500);
+          continue;
+        }
+        const results = isObject(payload) ? payload.results : void 0;
         if (!Array.isArray(results) || results.length !== dependencies.length) {
           const got = Array.isArray(results) ? `${results.length} results` : "no results";
           throw new FiretruckError(`unexpected response: expected ${dependencies.length} results, got ${got}`);
         }
         return results.map((item, i) => toResult(item, dependencies[i]));
       }
-      const message = (await response.json().catch(() => ({}))).error?.message ?? response.statusText;
+      const envelope = await response.json().catch(() => ({}));
+      const message = envelope.error?.message ?? response.statusText;
       if (response.status === 401) {
         throw new FiretruckError(`the API key was rejected (${message}). Check the api-key input or remove it.`);
       }
       if (response.status === 429) {
+        const { limit, max_limit: maxLimit, received } = envelope.error?.details ?? {};
+        if (typeof maxLimit === "number") {
+          throw new FiretruckError(`the API accepts at most ${limit} packages per batch for this key; this batch had ${received}`);
+        }
         const reset = Number(response.headers.get("X-RateLimit-Reset"));
         const waitMs = Number.isFinite(reset) && reset > 0 ? reset * 1e3 - Date.now() : Infinity;
         if (waitMs > maxRateLimitWaitMs || attempt >= maxAttempts) {
@@ -27023,11 +27057,11 @@ function createClient(options) {
           const hint = apiKey ? "" : " Set the api-key input to get a higher limit.";
           throw new FiretruckError(`rate limited by the Firetruck API${resetAt}.${hint}`);
         }
-        await sleep(Math.max(waitMs, 0) + 1e3);
+        await pause(Math.max(waitMs, 0) + 1e3);
         continue;
       }
       if (response.status >= 500 && attempt < maxAttempts) {
-        await sleep(2 ** attempt * 500);
+        await pause(2 ** attempt * 500);
         continue;
       }
       if (response.status >= 500) {
@@ -27062,8 +27096,8 @@ async function mapConcurrent(items, limit, fn) {
 }
 
 // src/inventory.ts
-import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { readFile, realpath, stat as stat2 } from "node:fs/promises";
+import { isAbsolute, relative, sep as sep5 } from "node:path";
 
 // node_modules/@actions/glob/lib/internal-globber.js
 import * as fs3 from "fs";
@@ -29362,11 +29396,11 @@ var SearchState = class {
 // node_modules/@actions/glob/lib/internal-globber.js
 var __awaiter2 = function(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve2) {
-      resolve2(value);
+    return value instanceof P ? value : new P(function(resolve) {
+      resolve(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve2, reject) {
+  return new (P || (P = Promise))(function(resolve, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -29382,7 +29416,7 @@ var __awaiter2 = function(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve2(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -29395,14 +29429,14 @@ var __asyncValues = function(o) {
   }, i);
   function verb(n) {
     i[n] = o[n] && function(v) {
-      return new Promise(function(resolve2, reject) {
-        v = o[n](v), settle(resolve2, reject, v.done, v.value);
+      return new Promise(function(resolve, reject) {
+        v = o[n](v), settle(resolve, reject, v.done, v.value);
       });
     };
   }
-  function settle(resolve2, reject, d, v) {
+  function settle(resolve, reject, d, v) {
     Promise.resolve(v).then(function(v2) {
-      resolve2({ value: v2, done: d });
+      resolve({ value: v2, done: d });
     }, reject);
   }
 };
@@ -29599,11 +29633,11 @@ var DefaultGlobber = class _DefaultGlobber {
 // node_modules/@actions/glob/lib/glob.js
 var __awaiter3 = function(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve2) {
-      resolve2(value);
+    return value instanceof P ? value : new P(function(resolve) {
+      resolve(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve2, reject) {
+  return new (P || (P = Promise))(function(resolve, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -29619,7 +29653,7 @@ var __awaiter3 = function(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve2(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -29651,8 +29685,15 @@ function parsePackageLock(content) {
       return [npm(name, pkg.version)];
     });
   }
+  const registry = (name, version) => {
+    if (version.startsWith("npm:")) {
+      const aliased = splitAtVersion(version.slice("npm:".length));
+      return aliased ? [npm(...aliased)] : [];
+    }
+    return version.includes(":") ? [] : [npm(name, version)];
+  };
   const walk = (deps = {}) => Object.entries(deps).flatMap(([name, dep]) => [
-    ...dep.version && !dep.version.includes(":") ? [npm(name, dep.version)] : [],
+    ...dep.version ? registry(name, dep.version) : [],
     ...walk(dep.dependencies)
   ]);
   return walk(lock.dependencies);
@@ -29665,20 +29706,40 @@ function parsePnpmLock(content) {
   });
   return keys.flatMap((key) => {
     const spec = key.replace(/^\//, "").replace(/\(.*$/, "");
-    const split = splitAtVersion(spec);
-    if (split) return [npm(...split)];
     const slash = spec.lastIndexOf("/");
-    return slash > 0 ? [npm(spec.slice(0, slash), spec.slice(slash + 1))] : [];
+    const last = slash > 0 ? spec.slice(slash + 1).match(/^(\d[^@_/]*)(?:_.*)?$/) : null;
+    if (last) return [npm(spec.slice(0, slash), last[1])];
+    const split = splitAtVersion(spec);
+    return split ? [npm(...split)] : [];
   });
+}
+function berryName(descriptor) {
+  const at = descriptor.indexOf("@", 1);
+  if (at === -1) return void 0;
+  const name = descriptor.slice(0, at);
+  const range2 = descriptor.slice(at + 1);
+  if (/^(workspace|link|portal|file):/.test(range2)) return void 0;
+  if (range2.startsWith("npm:")) {
+    const aliased = range2.slice("npm:".length);
+    const aliasAt = aliased.indexOf("@", 1);
+    return aliasAt === -1 ? name : aliased.slice(0, aliasAt);
+  }
+  if (range2.startsWith("patch:")) {
+    const inner = range2.slice("patch:".length).split("#")[0];
+    try {
+      return berryName(decodeURIComponent(inner));
+    } catch {
+      return berryName(inner);
+    }
+  }
+  return name;
 }
 function parseYarnLock(content) {
   const deps = [];
   let name;
   for (const line of content.split(/\r?\n/)) {
     if (line && !line.startsWith(" ") && !line.startsWith("#") && line.endsWith(":")) {
-      const first = line.slice(0, -1).split(",")[0].trim().replace(/^"|"$/g, "");
-      const split = splitAtVersion(first);
-      name = split && !/^(workspace|link|portal|file):/.test(split[1]) ? split[0] : void 0;
+      name = berryName(line.slice(0, -1).split(",")[0].trim().replace(/^"|"$/g, ""));
       continue;
     }
     const version = line.match(/^ {2}version:? "?([^"\s]+)"?$/)?.[1];
@@ -30473,7 +30534,7 @@ function parseGoMod(content) {
 var pypiName = (name) => name.toLowerCase().replace(/[-_.]+/g, "-");
 function parseRequirements(content) {
   return content.split(/\r?\n/).flatMap((raw) => {
-    const line = raw.replace(/(^|\s)#.*$/, "").split(";")[0].trim();
+    const line = raw.replace(/(^|\s)#.*$/, "").split(";")[0].replace(/\s+--.*$/, "").replace(/\s*\\$/, "").trim();
     const match3 = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*===?\s*([^\s,\\]+)$/);
     return match3 ? [{ ecosystem: "pypi", name: pypiName(match3[1]), version: match3[2] }] : [];
   });
@@ -30657,14 +30718,29 @@ var isUnchecked = (dependency) => "reason" in dependency;
 var excluded = ["!**/node_modules/**", "!**/vendor/**", "!**/.git/**"];
 async function findFiles(paths) {
   const patterns = paths.length > 0 ? paths : [...autoDetectPatterns, ...excluded];
-  const globber = await create(patterns.join("\n"), { matchDirectories: false });
+  const globber = await create(patterns.join("\n"), { matchDirectories: false, followSymbolicLinks: false });
   return (await globber.glob()).sort();
 }
-async function parseFiles(files, root) {
+var MAX_FILE_BYTES = 50 * 1024 * 1024;
+async function refusal(path6, root, maxBytes) {
+  const [real, realRoot] = await Promise.all([realpath(path6), realpath(root)]);
+  const fromRoot = relative(realRoot, real);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep5}`) || isAbsolute(fromRoot)) return "resolves outside the workspace";
+  const info2 = await stat2(real);
+  if (!info2.isFile()) return "not a regular file";
+  if (info2.size > maxBytes) return `larger than the ${Math.round(maxBytes / (1024 * 1024))} MiB limit`;
+  return void 0;
+}
+async function parseFiles(files, root, maxBytes = MAX_FILE_BYTES) {
   const parsed = [];
   const skipped = [];
   for (const path6 of files) {
     const file = relative(root, path6) || path6;
+    const reason = await refusal(path6, root, maxBytes);
+    if (reason) {
+      skipped.push({ file, reason });
+      continue;
+    }
     const content = await readFile(path6, "utf8");
     const parser = parserFor(path6, content);
     if (!parser) {
@@ -30672,7 +30748,7 @@ async function parseFiles(files, root) {
       continue;
     }
     try {
-      parsed.push({ file, dependencies: parser(content) });
+      parsed.push({ file, content, dependencies: parser(content) });
     } catch (error2) {
       skipped.push({ file, reason: error2 instanceof Error ? error2.message : String(error2) });
     }
@@ -30684,7 +30760,7 @@ function buildInventory(parsed) {
   const unchecked2 = /* @__PURE__ */ new Map();
   for (const { file, dependencies } of parsed) {
     for (const dependency of dependencies) {
-      const key = `${dependency.ecosystem}:${dependency.name.toLowerCase()}@${dependency.version}`;
+      const key = `${dependency.ecosystem}:${dependency.name}@${dependency.version}`;
       const entries = isUnchecked(dependency) ? unchecked2 : inventory;
       const entry = entries.get(key) ?? { dependency, files: [] };
       if (!entry.files.includes(file)) entry.files.push(file);
@@ -30695,12 +30771,18 @@ function buildInventory(parsed) {
 }
 
 // src/report.ts
-var kevLink = (id) => `[${id}](https://www.cve.org/CVERecord?id=${id})`;
-var escapeCell = (text) => text.replace(/\|/g, "\\|");
+var plain = (text) => text.replace(/[\r\n]+/g, " ").replace(/[&<>\\`|[\]*_~$@]/g, (char) => `&#${char.charCodeAt(0)};`).replace(/:\/\//g, "&#58;//").replace(/www\./gi, "www&#46;");
+function code(text) {
+  const flat = text.replace(/[\r\n]+/g, " ").replace(/\|/g, "\\|");
+  const fence = "`".repeat(Math.max(0, ...(flat.match(/`+/g) ?? []).map((run2) => run2.length)) + 1);
+  const pad = /^`|`$/.test(flat) ? " " : "";
+  return `${fence}${pad}${flat}${pad}${fence}`;
+}
+var kevLink = (id) => `[${plain(id)}](https://www.cve.org/CVERecord?id=${encodeURIComponent(id)})`;
 function distinctKevs(findings) {
   return [...new Set(findings.flatMap((f) => f.kevs))].sort();
 }
-var fileList = (files) => files.map((f) => `\`${escapeCell(f)}\``).join(", ");
+var fileList = (files) => files.map(code).join(", ");
 var plural = (n, one, many) => n === 1 ? one : many;
 function renderSummary({ findings, checked, unchecked: unchecked2, files, skipped }) {
   const vulnerable = findings.filter((f) => f.verdict === "yes");
@@ -30716,7 +30798,7 @@ function renderSummary({ findings, checked, unchecked: unchecked2, files, skippe
       "| Package | Version | Ecosystem | KEVs | Found in |",
       "| --- | --- | --- | --- | --- |",
       ...vulnerable.map(
-        ({ dependency: d, kevs: kevs2, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs2.map(kevLink).join(", ")} | ${fileList(files2)} |`
+        ({ dependency: d, kevs: kevs2, files: files2 }) => `| ${code(d.name)} | ${plain(d.version)} | ${d.ecosystem} | ${kevs2.map(kevLink).join(", ")} | ${fileList(files2)} |`
       )
     );
   }
@@ -30730,7 +30812,7 @@ function renderSummary({ findings, checked, unchecked: unchecked2, files, skippe
       "| Package | Version | Ecosystem | Linked KEVs | Found in |",
       "| --- | --- | --- | --- | --- |",
       ...unverified.map(
-        ({ dependency: d, unverifiedKevs, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(", ") || "-"} | ${fileList(files2)} |`
+        ({ dependency: d, unverifiedKevs, files: files2 }) => `| ${code(d.name)} | ${plain(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(", ") || "-"} | ${fileList(files2)} |`
       )
     );
   }
@@ -30744,20 +30826,21 @@ function renderSummary({ findings, checked, unchecked: unchecked2, files, skippe
       "| Package | Version | Ecosystem | Reason | Found in |",
       "| --- | --- | --- | --- | --- |",
       ...unchecked2.map(
-        ({ dependency: d, files: files2 }) => `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${escapeCell(d.ecosystem)} | ${escapeCell(d.reason)} | ${fileList(files2)} |`
+        ({ dependency: d, files: files2 }) => `| ${code(d.name)} | ${plain(d.version)} | ${plain(d.ecosystem)} | ${plain(d.reason)} | ${fileList(files2)} |`
       )
     );
   }
   lines.push("", `Checked ${checked} distinct ${plural(checked, "dependency", "dependencies")} from ${files.length} ${plural(files.length, "file", "files")}.`);
   if (skipped.length > 0) {
-    lines.push("", "<details><summary>Skipped files</summary>", "", ...skipped.map((s) => `- \`${s.file}\`: ${s.reason}`), "", "</details>");
+    lines.push("", "<details><summary>Skipped files</summary>", "", ...skipped.map((s) => `- ${code(s.file)}: ${plain(s.reason)}`), "", "</details>");
   }
   return lines.join("\n") + "\n";
 }
 function lineOf(content, name, version) {
+  const token = new RegExp(`(?<![\\w.@-])(?<!@[\\w.-]*/)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w./-])`);
   const lines = content.split(/\r?\n/);
-  const both = lines.findIndex((line) => line.includes(name) && line.includes(version));
-  const index = both !== -1 ? both : lines.findIndex((line) => line.includes(name));
+  const both = lines.findIndex((line) => token.test(line) && line.includes(version));
+  const index = both !== -1 ? both : lines.findIndex((line) => token.test(line));
   return index === -1 ? void 0 : index + 1;
 }
 
@@ -30773,14 +30856,14 @@ function readInputs() {
     paths: getMultilineInput("paths").filter(Boolean),
     apiKey,
     failOnKev: getBooleanInput("fail-on-kev"),
+    failOnSkipped: getBooleanInput("fail-on-skipped"),
+    failOnUnchecked: getBooleanInput("fail-on-unchecked"),
     concurrency
   };
 }
-function emptyInventoryFailure(parsed, skipped) {
-  const unsupported = skipped.filter((entry) => entry.reason === "unsupported file type").map((entry) => entry.file);
+function emptyLockfileFailure(parsed) {
   const emptyLocks = parsed.filter((entry) => isKnownLockfile(entry.file) && !entry.dependencies.some((dep) => !isUnchecked(dep))).map((entry) => entry.file);
-  if (unsupported.length === 0 && emptyLocks.length === 0) return void 0;
-  return `matched lockfile(s) but checked 0 dependencies (unsupported or empty): ${[...unsupported, ...emptyLocks].join(", ")}`;
+  return emptyLocks.length === 0 ? void 0 : `recognized lockfile(s) parsed to no dependencies: ${emptyLocks.join(", ")}`;
 }
 async function run(inputs, lookup = createClient(inputs)) {
   const root = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -30792,8 +30875,8 @@ async function run(inputs, lookup = createClient(inputs)) {
   const { parsed, skipped } = await parseFiles(files, root);
   for (const { file, reason } of skipped) warning(`Skipped ${file}: ${reason}`, { file });
   const { inventory, unchecked: unsupported } = buildInventory(parsed);
-  if (inventory.length === 0) {
-    const failure = emptyInventoryFailure(parsed, skipped);
+  if (inventory.length === 0 && inputs.failOnSkipped) {
+    const failure = emptyLockfileFailure(parsed);
     if (failure) throw new Error(failure);
   }
   info(`Checking ${inventory.length} distinct dependencies from ${parsed.length} files.`);
@@ -30815,11 +30898,11 @@ async function run(inputs, lookup = createClient(inputs)) {
   findings.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === "yes" ? -1 : 1) || a.dependency.name.localeCompare(b.dependency.name));
   const vulnerable = findings.filter((f) => f.verdict === "yes");
   const unverified = findings.filter((f) => f.verdict === "unverified");
+  const contents = new Map(parsed.map((p) => [p.file, p.content]));
   const annotate = inputs.failOnKev ? error : warning;
   for (const { dependency: d, verdict, kevs, unverifiedKevs, files: declaredIn } of findings) {
     for (const file of declaredIn) {
-      const content = await readFile2(resolve(root, file), "utf8");
-      const location = { file, startLine: lineOf(content, d.name, d.version) };
+      const location = { file, startLine: lineOf(contents.get(file), d.name, d.version) };
       if (verdict === "yes") {
         annotate(`${d.name}@${d.version} is affected by known exploited ${kevs.join(", ")}`, {
           title: "Known exploited vulnerability",
@@ -30834,10 +30917,8 @@ async function run(inputs, lookup = createClient(inputs)) {
       }
     }
   }
-  if (unchecked2.length > 0) {
-    const noun = unchecked2.length === 1 ? "dependency was" : "dependencies were";
-    warning(`${unchecked2.length} ${noun} not checked; the job summary lists them with the reason.`);
-  }
+  const uncheckedMessage = `${unchecked2.length} ${unchecked2.length === 1 ? "dependency was" : "dependencies were"} not checked; the job summary lists them with the reason.`;
+  if (unchecked2.length > 0) warning(uncheckedMessage);
   setOutput("findings", JSON.stringify(findings.map(({ dependency, verdict, files: files2, kevs, unverifiedKevs }) => ({ ...dependency, verdict, files: files2, kevs, unverifiedKevs }))));
   setOutput("kev-count", distinctKevs(vulnerable).length);
   setOutput("vulnerable-count", vulnerable.length);
@@ -30851,6 +30932,10 @@ async function run(inputs, lookup = createClient(inputs)) {
     const noun = vulnerable.length === 1 ? "dependency matches" : "dependencies match";
     setFailed(`${vulnerable.length} ${noun} known exploited vulnerabilities: ${distinctKevs(vulnerable).join(", ")}`);
   }
+  if (inputs.failOnSkipped && skipped.length > 0) {
+    setFailed(`${skipped.length} ${skipped.length === 1 ? "file was" : "files were"} skipped: ${skipped.map((s) => s.file).join(", ")}`);
+  }
+  if (inputs.failOnUnchecked && unchecked2.length > 0) setFailed(uncheckedMessage);
   return findings;
 }
 

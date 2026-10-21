@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import * as core from '@actions/core';
 import { createClient, lookupAll, type Lookup } from './client.ts';
 import { buildInventory, findFiles, parseFiles, type ParsedFile, type Skipped } from './inventory.ts';
@@ -11,6 +9,8 @@ export interface Inputs {
   paths: string[];
   apiKey: string;
   failOnKev: boolean;
+  failOnSkipped: boolean;
+  failOnUnchecked: boolean;
   concurrency: number;
 }
 
@@ -25,22 +25,22 @@ export function readInputs(): Inputs {
     paths: core.getMultilineInput('paths').filter(Boolean),
     apiKey,
     failOnKev: core.getBooleanInput('fail-on-kev'),
+    failOnSkipped: core.getBooleanInput('fail-on-skipped'),
+    failOnUnchecked: core.getBooleanInput('fail-on-unchecked'),
     concurrency,
   };
 }
 
 /**
- * A green run that checked nothing is a silent pass. Fail when every checkable dependency is
- * missing because a file was skipped as unsupported, or a recognized lockfile parsed to none.
- * An SBOM with no components is neither of those and may still pass.
+ * A green run that checked nothing is a silent pass. When nothing at all could be checked, a
+ * recognized lockfile that parsed to no dependencies is a failure. An SBOM with no components is
+ * not a lockfile and may still pass. Skipped files are reported separately at the end of the run.
  */
-function emptyInventoryFailure(parsed: ParsedFile[], skipped: Skipped[]): string | undefined {
-  const unsupported = skipped.filter((entry) => entry.reason === 'unsupported file type').map((entry) => entry.file);
+function emptyLockfileFailure(parsed: ParsedFile[]): string | undefined {
   const emptyLocks = parsed
     .filter((entry) => isKnownLockfile(entry.file) && !entry.dependencies.some((dep) => !isUnchecked(dep)))
     .map((entry) => entry.file);
-  if (unsupported.length === 0 && emptyLocks.length === 0) return undefined;
-  return `matched lockfile(s) but checked 0 dependencies (unsupported or empty): ${[...unsupported, ...emptyLocks].join(', ')}`;
+  return emptyLocks.length === 0 ? undefined : `recognized lockfile(s) parsed to no dependencies: ${emptyLocks.join(', ')}`;
 }
 
 export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs)): Promise<Finding[]> {
@@ -54,8 +54,8 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
   const { parsed, skipped } = await parseFiles(files, root);
   for (const { file, reason } of skipped) core.warning(`Skipped ${file}: ${reason}`, { file });
   const { inventory, unchecked: unsupported } = buildInventory(parsed);
-  if (inventory.length === 0) {
-    const failure = emptyInventoryFailure(parsed, skipped);
+  if (inventory.length === 0 && inputs.failOnSkipped) {
+    const failure = emptyLockfileFailure(parsed);
     if (failure) throw new Error(failure);
   }
   core.info(`Checking ${inventory.length} distinct dependencies from ${parsed.length} files.`);
@@ -80,11 +80,11 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
   const vulnerable = findings.filter((f) => f.verdict === 'yes');
   const unverified = findings.filter((f) => f.verdict === 'unverified');
 
+  const contents = new Map(parsed.map((p) => [p.file, p.content]));
   const annotate = inputs.failOnKev ? core.error : core.warning;
   for (const { dependency: d, verdict, kevs, unverifiedKevs, files: declaredIn } of findings) {
     for (const file of declaredIn) {
-      const content = await readFile(resolve(root, file), 'utf8');
-      const location = { file, startLine: lineOf(content, d.name, d.version) };
+      const location = { file, startLine: lineOf(contents.get(file)!, d.name, d.version) };
       if (verdict === 'yes') {
         annotate(`${d.name}@${d.version} is affected by known exploited ${kevs.join(', ')}`, {
           title: 'Known exploited vulnerability',
@@ -99,10 +99,9 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
       }
     }
   }
-  if (unchecked.length > 0) {
-    const noun = unchecked.length === 1 ? 'dependency was' : 'dependencies were';
-    core.warning(`${unchecked.length} ${noun} not checked; the job summary lists them with the reason.`);
-  }
+  const uncheckedMessage =
+    `${unchecked.length} ${unchecked.length === 1 ? 'dependency was' : 'dependencies were'} not checked; the job summary lists them with the reason.`;
+  if (unchecked.length > 0) core.warning(uncheckedMessage);
 
   core.setOutput('findings', JSON.stringify(findings.map(({ dependency, verdict, files, kevs, unverifiedKevs }) => ({ ...dependency, verdict, files, kevs, unverifiedKevs }))));
   core.setOutput('kev-count', distinctKevs(vulnerable).length);
@@ -118,5 +117,9 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
     const noun = vulnerable.length === 1 ? 'dependency matches' : 'dependencies match';
     core.setFailed(`${vulnerable.length} ${noun} known exploited vulnerabilities: ${distinctKevs(vulnerable).join(', ')}`);
   }
+  if (inputs.failOnSkipped && skipped.length > 0) {
+    core.setFailed(`${skipped.length} ${skipped.length === 1 ? 'file was' : 'files were'} skipped: ${skipped.map((s) => s.file).join(', ')}`);
+  }
+  if (inputs.failOnUnchecked && unchecked.length > 0) core.setFailed(uncheckedMessage);
   return findings;
 }

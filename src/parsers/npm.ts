@@ -32,9 +32,17 @@ export function parsePackageLock(content: string): Dependency[] {
     });
   }
 
+  /** An `npm:` alias installs another package under this name; git and file refs are not registry versions. */
+  const registry = (name: string, version: string): Dependency[] => {
+    if (version.startsWith("npm:")) {
+      const aliased = splitAtVersion(version.slice("npm:".length));
+      return aliased ? [npm(...aliased)] : [];
+    }
+    return version.includes(":") ? [] : [npm(name, version)];
+  };
   const walk = (deps: Record<string, PackageLockV1Dep> = {}): Dependency[] =>
     Object.entries(deps).flatMap(([name, dep]) => [
-      ...(dep.version && !dep.version.includes(":") ? [npm(name, dep.version)] : []),
+      ...(dep.version ? registry(name, dep.version) : []),
       ...walk(dep.dependencies),
     ]);
   return walk(lock.dependencies);
@@ -49,12 +57,40 @@ export function parsePnpmLock(content: string): Dependency[] {
   });
   return keys.flatMap((key) => {
     const spec = key.replace(/^\//, "").replace(/\(.*$/, "");
-    const split = splitAtVersion(spec);
-    if (split) return [npm(...split)];
-    // pnpm lockfile v5 keys look like `/name/1.2.3` or `/@scope/name/1.2.3`.
+    // pnpm lockfile v5 keys look like `/name/1.2.3` or `/@scope/name/1.2.3_peer@4.5.6`: the version is the
+    // last path segment and any peer suffix follows its first `_`. A `@` before that `_` means a v6+ key.
     const slash = spec.lastIndexOf("/");
-    return slash > 0 ? [npm(spec.slice(0, slash), spec.slice(slash + 1))] : [];
+    const last = slash > 0 ? spec.slice(slash + 1).match(/^(\d[^@_/]*)(?:_.*)?$/) : null;
+    if (last) return [npm(spec.slice(0, slash), last[1]!)];
+    const split = splitAtVersion(spec);
+    return split ? [npm(...split)] : [];
   });
+}
+
+/**
+ * Package name of a Yarn Berry descriptor (`name@range`). `npm:` ranges may alias another package
+ * (`foo@npm:bar@^1.0.0` is `bar`) and `patch:` ranges wrap the descriptor of the package they patch.
+ */
+function berryName(descriptor: string): string | undefined {
+  const at = descriptor.indexOf("@", 1);
+  if (at === -1) return undefined;
+  const name = descriptor.slice(0, at);
+  const range = descriptor.slice(at + 1);
+  if (/^(workspace|link|portal|file):/.test(range)) return undefined;
+  if (range.startsWith("npm:")) {
+    const aliased = range.slice("npm:".length);
+    const aliasAt = aliased.indexOf("@", 1);
+    return aliasAt === -1 ? name : aliased.slice(0, aliasAt);
+  }
+  if (range.startsWith("patch:")) {
+    const inner = range.slice("patch:".length).split("#")[0]!;
+    try {
+      return berryName(decodeURIComponent(inner));
+    } catch {
+      return berryName(inner);
+    }
+  }
+  return name;
 }
 
 /** Handles both Yarn classic (`version "1.2.3"`) and Berry (`version: 1.2.3`) lockfiles. */
@@ -64,9 +100,7 @@ export function parseYarnLock(content: string): Dependency[] {
 
   for (const line of content.split(/\r?\n/)) {
     if (line && !line.startsWith(" ") && !line.startsWith("#") && line.endsWith(":")) {
-      const first = line.slice(0, -1).split(",")[0]!.trim().replace(/^"|"$/g, "");
-      const split = splitAtVersion(first);
-      name = split && !/^(workspace|link|portal|file):/.test(split[1]) ? split[0] : undefined;
+      name = berryName(line.slice(0, -1).split(",")[0]!.trim().replace(/^"|"$/g, ""));
       continue;
     }
     const version = line.match(/^ {2}version:? "?([^"\s]+)"?$/)?.[1];
