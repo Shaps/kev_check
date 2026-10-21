@@ -108,9 +108,11 @@ An SBOM is still the way to check a build that does not commit a lockfile. See t
 
 A generic scanner run on the checked-out sources, such as `anchore/sbom-action` with its default `path: .`, reads `pom.xml` without resolving it. Transitive dependencies are missing, versions inherited from a parent POM or a BOM come out as `UNKNOWN`, and Gradle build scripts are not read at all. The action reports those components as not checked, and the step can pass while checking almost nothing. Generate the SBOM with Maven or Gradle as shown above.
 
-### Fail when nothing was checked
+### Skipped files
 
-If nothing was checked because a file was skipped as unsupported, or because a recognized lockfile such as `gradle.lockfile` parsed to no dependencies, the step fails. An SBOM that lists no components still passes with `checked-count` set to `0`. To fail in that case:
+A file the action finds but cannot read is *skipped*: an unsupported type such as `pom.xml`, malformed content, or (see below) a file it refuses to read. Each skipped file raises a warning and is listed in the job summary. By default any skipped file fails the step, after the other files have been checked and reported, so a broken or unreadable lockfile cannot turn the run green while its dependencies go unchecked. Set `fail-on-skipped: false` to only warn.
+
+The same input covers a recognized lockfile, such as `gradle.lockfile`, that parses to no dependencies when nothing else was checked. An SBOM that lists no components still passes with `checked-count` set to `0`. To fail in that case:
 
 ```yaml
 - id: kev
@@ -141,7 +143,7 @@ A dependency can also end up **not checked**, with no verdict at all. This happe
 - an SBOM component has no purl, so its ecosystem is unknown.
 - the API rejects that one entry. The rest of the batch is unaffected.
 
-Not-checked dependencies do not fail the step. They raise a single warning and are listed with the reason in the job summary.
+Not-checked dependencies raise a single warning and are listed with the reason in the job summary. They do not fail the step unless `fail-on-unchecked` is `true`.
 
 ## Inputs
 
@@ -150,6 +152,8 @@ Not-checked dependencies do not fail the step. They raise a single warning and a
 | `paths` | auto-detect | Newline-separated files or globs to scan. SBOMs with other names are detected by content. |
 | `api-key` | none | Firetruck API key. Store it as a secret. |
 | `fail-on-kev` | `true` | Fail the step on any `yes` verdict. Set to `false` to only annotate and summarize. `unverified` never fails the step. |
+| `fail-on-skipped` | `true` | Fail the step when any file is skipped. See [Skipped files](#skipped-files). Set to `false` to only warn. |
+| `fail-on-unchecked` | `false` | Fail the step when any dependency was not checked, for an unsupported ecosystem or an entry the API rejected. `unverified` never fails the step. |
 | `concurrency` | `8` | Batch requests in flight at once. |
 
 ## Outputs
