@@ -89,6 +89,22 @@ describe('findFiles', () => {
 });
 
 describe('buildInventory', () => {
+  it('counts an unchecked dependency once when two files declare it', () => {
+    const dependency = {
+      ecosystem: 'deb',
+      name: 'debian/openssl',
+      version: '3.0.11-1',
+      reason: 'ecosystem not supported (purl type "deb")',
+    };
+    const { inventory, unchecked } = buildInventory([
+      { file: 'a.cdx.json', content: '', dependencies: [dependency] },
+      { file: 'b.cdx.json', content: '', dependencies: [{ ...dependency }] },
+    ]);
+
+    expect(inventory).toEqual([]);
+    expect(unchecked).toEqual([{ dependency, files: ['a.cdx.json', 'b.cdx.json'] }]);
+  });
+
   it('keeps names that differ only in case as separate dependencies', () => {
     const dependency = (name: string) => ({ ecosystem: 'golang' as const, name, version: 'v1.0.0' });
     const { inventory } = buildInventory([
