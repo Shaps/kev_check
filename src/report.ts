@@ -1,14 +1,29 @@
 import type { Finding, UncheckedEntry } from './types.ts';
 import type { Skipped } from './inventory.ts';
 
-const kevLink = (id: string) => `[${id}](https://www.cve.org/CVERecord?id=${id})`;
-const escapeCell = (text: string) => text.replace(/\|/g, '\\|');
+/** Untrusted text as inert plain text: newlines collapse, and every character or sequence Markdown would act on is neutralized. */
+const plain = (text: string) =>
+  text
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[&<>\\`|[\]*_~$@]/g, (char) => `&#${char.charCodeAt(0)};`)
+    .replace(/:\/\//g, '&#58;//')
+    .replace(/www\./gi, 'www&#46;');
+
+/** Untrusted text as a code span: the fence outgrows any backtick run in it, and `\|` keeps a pipe inside its table cell. */
+function code(text: string): string {
+  const flat = text.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|');
+  const fence = '`'.repeat(Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length)) + 1);
+  const pad = /^`|`$/.test(flat) ? ' ' : '';
+  return `${fence}${pad}${flat}${pad}${fence}`;
+}
+
+const kevLink = (id: string) => `[${plain(id)}](https://www.cve.org/CVERecord?id=${encodeURIComponent(id)})`;
 
 export function distinctKevs(findings: Finding[]): string[] {
   return [...new Set(findings.flatMap((f) => f.kevs))].sort();
 }
 
-const fileList = (files: string[]) => files.map((f) => `\`${escapeCell(f)}\``).join(', ');
+const fileList = (files: string[]) => files.map(code).join(', ');
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 export interface SummaryInput {
@@ -38,7 +53,7 @@ export function renderSummary({ findings, checked, unchecked, files, skipped }: 
       '| --- | --- | --- | --- | --- |',
       ...vulnerable.map(
         ({ dependency: d, kevs, files }) =>
-          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${kevs.map(kevLink).join(', ')} | ${fileList(files)} |`,
+          `| ${code(d.name)} | ${plain(d.version)} | ${d.ecosystem} | ${kevs.map(kevLink).join(', ')} | ${fileList(files)} |`,
       ),
     );
   }
@@ -54,7 +69,7 @@ export function renderSummary({ findings, checked, unchecked, files, skipped }: 
       '| --- | --- | --- | --- | --- |',
       ...unverified.map(
         ({ dependency: d, unverifiedKevs, files }) =>
-          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(', ') || '-'} | ${fileList(files)} |`,
+          `| ${code(d.name)} | ${plain(d.version)} | ${d.ecosystem} | ${unverifiedKevs.map(kevLink).join(', ') || '-'} | ${fileList(files)} |`,
       ),
     );
   }
@@ -70,22 +85,26 @@ export function renderSummary({ findings, checked, unchecked, files, skipped }: 
       '| --- | --- | --- | --- | --- |',
       ...unchecked.map(
         ({ dependency: d, files }) =>
-          `| \`${escapeCell(d.name)}\` | ${escapeCell(d.version)} | ${escapeCell(d.ecosystem)} | ${escapeCell(d.reason)} | ${fileList(files)} |`,
+          `| ${code(d.name)} | ${plain(d.version)} | ${plain(d.ecosystem)} | ${plain(d.reason)} | ${fileList(files)} |`,
       ),
     );
   }
 
   lines.push('', `Checked ${checked} distinct ${plural(checked, 'dependency', 'dependencies')} from ${files.length} ${plural(files.length, 'file', 'files')}.`);
   if (skipped.length > 0) {
-    lines.push('', '<details><summary>Skipped files</summary>', '', ...skipped.map((s) => `- \`${s.file}\`: ${s.reason}`), '', '</details>');
+    lines.push('', '<details><summary>Skipped files</summary>', '', ...skipped.map((s) => `- ${code(s.file)}: ${plain(s.reason)}`), '', '</details>');
   }
   return lines.join('\n') + '\n';
 }
 
-/** Best-effort line of the dependency in its manifest, so the annotation lands near it. */
+/**
+ * Best-effort line of the dependency in its manifest, so the annotation lands near it. The name must
+ * be a whole token: `react` is not `react-dom`, `lodash.merge`, or `@types/react`.
+ */
 export function lineOf(content: string, name: string, version: string): number | undefined {
+  const token = new RegExp(`(?<![\\w.@-])(?<!@[\\w.-]*/)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w./-])`);
   const lines = content.split(/\r?\n/);
-  const both = lines.findIndex((line) => line.includes(name) && line.includes(version));
-  const index = both !== -1 ? both : lines.findIndex((line) => line.includes(name));
+  const both = lines.findIndex((line) => token.test(line) && line.includes(version));
+  const index = both !== -1 ? both : lines.findIndex((line) => token.test(line));
   return index === -1 ? undefined : index + 1;
 }

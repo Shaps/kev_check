@@ -16,6 +16,8 @@ const inputs = (overrides: Partial<Inputs> = {}): Inputs => ({
   paths: [],
   apiKey: '',
   failOnKev: true,
+  failOnSkipped: true,
+  failOnUnchecked: false,
   concurrency: 4,
   ...overrides,
 });
@@ -261,6 +263,57 @@ describe('run', () => {
     expect(core.warning).toHaveBeenCalledWith(expect.stringMatching(/^Skipped out\/broken\.cdx\.json: .*JSON/), {
       file: 'out/broken.cdx.json',
     });
+    expect(core.setFailed).toHaveBeenCalledWith('1 file was skipped: out/broken.cdx.json');
+  });
+
+  it('still reports findings, then fails, when a malformed lockfile sits beside a good one', async () => {
+    await writeWorkspace({
+      'package-lock.json': packageLock({ jquery: '1.12.4' }),
+      'go.mod': 'module x\n',
+      'Pipfile.lock': '{not json',
+    });
+
+    await run(inputs(), fakeLookup);
+
+    expect(outputs()).toMatchObject({ 'vulnerable-count': 1 });
+    const failures = vi.mocked(core.setFailed).mock.calls.map(([message]) => message);
+    expect(failures).toEqual([
+      expect.stringContaining('known exploited vulnerabilities: CVE-2020-11023'),
+      '1 file was skipped: Pipfile.lock',
+    ]);
+  });
+
+  it('only warns about skipped files when fail-on-skipped is false', async () => {
+    await writeWorkspace({ 'package-lock.json': packageLock({ lodash: '4.17.21' }), 'Pipfile.lock': '{not json' });
+
+    await run(inputs({ failOnSkipped: false }), fakeLookup);
+
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Skipped Pipfile.lock'), expect.anything());
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it('fails on unchecked dependencies only when fail-on-unchecked is true', async () => {
+    await writeWorkspace({ 'package-lock.json': packageLock({ broken: '1.0.0', lodash: '4.17.21' }) });
+
+    await run(inputs(), fakeLookup);
+    expect(core.setFailed).not.toHaveBeenCalled();
+
+    await run(inputs({ failOnUnchecked: true }), fakeLookup);
+    expect(core.setFailed).toHaveBeenCalledWith('1 dependency was not checked; the job summary lists them with the reason.');
+  });
+
+  it('never fails on an unverified verdict, even with fail-on-unchecked', async () => {
+    await writeWorkspace({
+      'sbom.cdx.json': JSON.stringify({
+        bomFormat: 'CycloneDX',
+        components: [{ name: 'lib', version: '1.0', purl: 'pkg:maven/org.example/lib@1.0' }],
+      }),
+    });
+
+    await run(inputs({ failOnUnchecked: true }), fakeLookup);
+
+    expect(outputs()).toMatchObject({ 'unverified-count': 1 });
+    expect(core.setFailed).not.toHaveBeenCalled();
   });
 
   it('errors clearly when nothing is found', async () => {
@@ -287,21 +340,33 @@ empty=
     expect(core.setFailed).not.toHaveBeenCalled();
   });
 
-  it('fails when an explicit path is an unsupported file and nothing was checked', async () => {
+  it('fails when every file is skipped, such as an unsupported explicit path', async () => {
     await writeWorkspace({ 'pom.xml': '<project/>\n' });
-    await expect(run(inputs({ paths: ['pom.xml'] }), fakeLookup)).rejects.toThrow(
-      'matched lockfile(s) but checked 0 dependencies (unsupported or empty): pom.xml',
-    );
+
+    await run(inputs({ paths: ['pom.xml'] }), fakeLookup);
+
     expect(fakeLookup).not.toHaveBeenCalled();
-    expect(outputs()['checked-count']).toBeUndefined();
+    expect(core.setFailed).toHaveBeenCalledWith('1 file was skipped: pom.xml');
+  });
+
+  it('lets an unsupported explicit path pass with fail-on-skipped false', async () => {
+    await writeWorkspace({ 'pom.xml': '<project/>\n' });
+    await run(inputs({ paths: ['pom.xml'], failOnSkipped: false }), fakeLookup);
+    expect(core.setFailed).not.toHaveBeenCalled();
   });
 
   it('fails when a gradle.lockfile has no dependencies', async () => {
     await writeWorkspace({ 'gradle.lockfile': '# comment\n\nempty=\n' });
     await expect(run(inputs({ paths: ['gradle.lockfile'] }), fakeLookup)).rejects.toThrow(
-      'matched lockfile(s) but checked 0 dependencies (unsupported or empty): gradle.lockfile',
+      'recognized lockfile(s) parsed to no dependencies: gradle.lockfile',
     );
     expect(fakeLookup).not.toHaveBeenCalled();
+  });
+
+  it('passes an empty gradle.lockfile with fail-on-skipped false', async () => {
+    await writeWorkspace({ 'gradle.lockfile': '# comment\n\nempty=\n' });
+    await expect(run(inputs({ paths: ['gradle.lockfile'], failOnSkipped: false }), fakeLookup)).resolves.toEqual([]);
+    expect(core.setFailed).not.toHaveBeenCalled();
   });
 
   it('still passes an empty CycloneDX SBOM', async () => {

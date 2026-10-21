@@ -1,3 +1,5 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
 import { BATCH_SIZE, createClient, FiretruckError, lookupAll, mapConcurrent } from '../src/client.ts';
 import type { Dependency } from '../src/types.ts';
@@ -16,7 +18,7 @@ function setup(...responses: (Response | Error)[]) {
     if (next instanceof Error) throw next;
     return next;
   });
-  const sleep = vi.fn(async () => {});
+  const sleep = vi.fn(async (_ms: number) => {});
   return { fetch, sleep };
 }
 
@@ -119,6 +121,9 @@ describe('createClient', () => {
     const { fetch, sleep } = setup(json(429, { error: { message: 'slow down' } }, { 'X-RateLimit-Reset': reset }), batch(clean));
     await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep])).resolves.toHaveLength(1);
     expect(sleep).toHaveBeenCalledTimes(1);
+    // X-RateLimit-Reset is a Unix epoch in seconds: wait until it, plus a second of slack.
+    expect(sleep.mock.calls[0]![0]).toBeGreaterThan(5000);
+    expect(sleep.mock.calls[0]![0]).toBeLessThanOrEqual(6000);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -163,6 +168,102 @@ describe('createClient', () => {
     const { fetch, sleep } = setup(batch(...deps.slice(0, BATCH_SIZE).map(() => clean)), json(402, { error: { message: 'x' } }));
     const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep });
     await expect(lookupAll(lookup, deps, 1)).rejects.toThrow('batch rejected by the API: 402');
+  });
+
+  it('never follows a redirect, so the API key cannot leave the API origin', async () => {
+    const hits: (string | undefined)[] = [];
+    const target = createServer((req, res) => {
+      hits.push(req.headers['x-api-key'] as string | undefined);
+      res.end('{}');
+    });
+    const origin = createServer((_req, res) => {
+      res.writeHead(307, { Location: `http://127.0.0.1:${(target.address() as AddressInfo).port}/steal` });
+      res.end();
+    });
+    const listen = (server: Server) => new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    await Promise.all([listen(target), listen(origin)]);
+    try {
+      const lookup = createClient({
+        apiUrl: `http://127.0.0.1:${(origin.address() as AddressInfo).port}`,
+        apiKey: 'secret',
+        sleep: async () => {},
+        maxAttempts: 1,
+      });
+      await expect(lookup([dep])).rejects.toThrow(FiretruckError);
+      expect(hits).toEqual([]);
+    } finally {
+      origin.close();
+      target.close();
+    }
+  });
+
+  it('retries a request that exceeds the per-request timeout', async () => {
+    let calls = 0;
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init: RequestInit = {}) => {
+      if (++calls > 1) return batch(clean);
+      return new Promise<Response>((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(init.signal!.reason)));
+    });
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep: async () => {}, requestTimeoutMs: 20 });
+    await expect(lookup([dep])).resolves.toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0]![1]!.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('fails once the overall deadline passes, however many attempts remain', async () => {
+    const fetch = vi.fn(
+      (_url: RequestInfo | URL, init: RequestInit = {}) =>
+        new Promise<Response>((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(init.signal!.reason))),
+    );
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep: async () => {}, requestTimeoutMs: 10_000, deadlineMs: 30 });
+    await expect(lookup([dep])).rejects.toThrow(/did not finish within/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sleep past the overall deadline', async () => {
+    const { fetch, sleep } = setup(json(503, {}));
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep, deadlineMs: 100 });
+    await expect(lookup([dep])).rejects.toThrow(/did not finish within/);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('retries a non-JSON 200 like a server error, then reports it as non-JSON', async () => {
+    const html = () => new Response('<html>bad gateway</html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    const retried = setup(html(), batch(clean));
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch: retried.fetch, sleep: retried.sleep })([dep])).resolves.toHaveLength(1);
+    expect(retried.fetch).toHaveBeenCalledTimes(2);
+
+    const failing = setup(html(), html());
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch: failing.fetch, sleep: failing.sleep, maxAttempts: 2 });
+    await expect(lookup([dep])).rejects.toThrow(/non-JSON response/);
+  });
+
+  it('rejects results that break the API contract', async () => {
+    const malformed: Record<string, unknown> = {
+      'a non-string kev': { verdict: 'yes', kevs: [{ id: 1 }] },
+      'kevs that are not an array': { verdict: 'yes', kevs: 'CVE-1' },
+      'matches that are not an array': { verdict: 'no', kevs: [], matches: 'x' },
+      'a match without a string cve_id': { verdict: 'unverified', kevs: [], matches: [{ cve_id: 7, verdict: 'unverified' }] },
+      'a match with an unknown verdict': { verdict: 'unverified', kevs: [], matches: [{ cve_id: 'CVE-1', verdict: 'no' }] },
+      'an error without a message': { input: {}, error: { code: 'VALIDATION_ERROR' } },
+      'an item that is not an object': 'no',
+    };
+    for (const [label, item] of Object.entries(malformed)) {
+      const { fetch, sleep } = setup(batch(item));
+      const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
+      expect(error, label).toBeInstanceOf(FiretruckError);
+      expect(error.message, label).toMatch(/unexpected response for jquery@3.7.1/);
+    }
+  });
+
+  it('fails immediately when the batch is larger than the key allows, without waiting or retrying', async () => {
+    const body = { error: { code: 'RATE_LIMITED', message: 'too many packages', details: { limit: 50, max_limit: 1000, received: 100 } } };
+    const reset = String(Math.floor(Date.now() / 1000) + 5);
+    const { fetch, sleep } = setup(json(429, body, { 'X-RateLimit-Reset': reset }), batch(clean));
+    const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
+    expect(error).toBeInstanceOf(FiretruckError);
+    expect(error.message).toBe('the API accepts at most 50 packages per batch for this key; this batch had 100');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });
 
