@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import * as core from '@actions/core';
 import { createClient, lookupAll, type Lookup } from './client.ts';
 import { buildInventory, findFiles, parseFiles, type ParsedFile, type Skipped } from './inventory.ts';
@@ -82,11 +80,11 @@ export async function run(inputs: Inputs, lookup: Lookup = createClient(inputs))
   const vulnerable = findings.filter((f) => f.verdict === 'yes');
   const unverified = findings.filter((f) => f.verdict === 'unverified');
 
+  const contents = new Map(parsed.map((p) => [p.file, p.content]));
   const annotate = inputs.failOnKev ? core.error : core.warning;
   for (const { dependency: d, verdict, kevs, unverifiedKevs, files: declaredIn } of findings) {
     for (const file of declaredIn) {
-      const content = await readFile(resolve(root, file), 'utf8');
-      const location = { file, startLine: lineOf(content, d.name, d.version) };
+      const location = { file, startLine: lineOf(contents.get(file)!, d.name, d.version) };
       if (verdict === 'yes') {
         annotate(`${d.name}@${d.version} is affected by known exploited ${kevs.join(', ')}`, {
           title: 'Known exploited vulnerability',

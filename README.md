@@ -112,6 +112,8 @@ A generic scanner run on the checked-out sources, such as `anchore/sbom-action` 
 
 A file the action finds but cannot read is *skipped*: an unsupported type such as `pom.xml`, malformed content, or (see below) a file it refuses to read. Each skipped file raises a warning and is listed in the job summary. By default any skipped file fails the step, after the other files have been checked and reported, so a broken or unreadable lockfile cannot turn the run green while its dependencies go unchecked. Set `fail-on-skipped: false` to only warn.
 
+The action refuses to read a file that resolves outside the workspace (`GITHUB_WORKSPACE`), that is not a regular file, or that is over 50 MiB. A symlink inside the workspace that points to another file inside it is read. Directory symlinks are not followed. Because of the first rule, a `paths` entry that points outside the workspace, such as an absolute path under `/tmp`, is skipped; generate SBOMs inside the workspace, as the Maven and Gradle examples above do.
+
 The same input covers a recognized lockfile, such as `gradle.lockfile`, that parses to no dependencies when nothing else was checked. An SBOM that lists no components still passes with `checked-count` set to `0`. To fail in that case:
 
 ```yaml
