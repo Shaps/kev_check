@@ -106,6 +106,48 @@ jquery@^3.0.0:
 `;
     expect(pairs(parseYarnLock(lock))).toEqual(['jquery@3.7.1']);
   });
+
+  it('strips pnpm v5 peer suffixes that follow the version', () => {
+    const lock = `lockfileVersion: 5.4
+packages:
+  /@babel/core/7.20.0_@babel+preset-env@7.5.0:
+    resolution: {integrity: x}
+  /react-dom/18.2.0_react@18.2.0:
+    resolution: {integrity: x}
+  /some_pkg/1.0.0:
+    resolution: {integrity: x}
+`;
+    expect(pairs(parsePnpmLock(lock))).toEqual(['@babel/core@7.20.0', 'react-dom@18.2.0', 'some_pkg@1.0.0']);
+  });
+
+  it('reads the real package name from yarn berry patch and alias headers', () => {
+    const lock = `"lodash@patch:lodash@npm%3A4.17.21#./patches/lodash.patch::version=4.17.21&hash=abc":
+  version: 4.17.21
+
+"foo@npm:bar@^1.0.0":
+  version: 1.2.3
+
+"@scope/x@patch:@scope/x@npm%3A2.0.0#~builtin<compat/x>":
+  version: 2.0.0
+
+"@a/b@npm:@c/d@^3.0.0":
+  version: 3.1.0
+`;
+    expect(pairs(parseYarnLock(lock))).toEqual(['lodash@4.17.21', 'bar@1.2.3', '@scope/x@2.0.0', '@c/d@3.1.0']);
+  });
+
+  it('reads npm: aliases in package-lock v1 as the aliased package', () => {
+    const lock = JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        foo: { version: 'npm:bar@1.2.3' },
+        scoped: { version: 'npm:@c/d@3.1.0' },
+        gitdep: { version: 'github:user/repo#abc' },
+        local: { version: 'file:../local' },
+      },
+    });
+    expect(pairs(parsePackageLock(lock))).toEqual(['bar@1.2.3', '@c/d@3.1.0']);
+  });
 });
 
 describe('bun.lock', () => {
@@ -161,7 +203,12 @@ flask
 urllib3==1.26.5 --hash=sha256:abc
 Jinja2===3.1.2  # trailing comment
 `;
-    expect(pairs(parseRequirements(reqs))).toEqual(['django@4.2.1', 'requests@2.31.0', 'jinja2@3.1.2']);
+    expect(pairs(parseRequirements(reqs))).toEqual(['django@4.2.1', 'requests@2.31.0', 'urllib3@1.26.5', 'jinja2@3.1.2']);
+  });
+
+  it('reads pip-compile hashed pins that continue onto --hash lines', () => {
+    const reqs = 'django==3.2.0 \\\n    --hash=sha256:abc \\\n    --hash=sha256:def\nflask==2.0.0\n';
+    expect(pairs(parseRequirements(reqs))).toEqual(['django@3.2.0', 'flask@2.0.0']);
   });
 
   it('reads Pipfile.lock pins from default and develop', () => {
