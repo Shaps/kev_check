@@ -84,6 +84,29 @@ describe('createClient', () => {
     expect(results.map((r) => r.verdict)).toEqual(['no', 'yes']);
   });
 
+  it('keeps a confirmed match out of unverifiedKevs', async () => {
+    const { fetch, sleep } = setup(
+      batch({
+        verdict: 'yes',
+        kevs: ['CVE-1'],
+        matches: [
+          { cve_id: 'CVE-1', verdict: 'yes' },
+          { cve_id: 'CVE-2', verdict: 'unverified' },
+        ],
+      }),
+    );
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep])).resolves.toEqual([
+      { verdict: 'yes', kevs: ['CVE-1'], unverifiedKevs: ['CVE-2'] },
+    ]);
+  });
+
+  it('uses the error code when a per-item message is empty', async () => {
+    const { fetch, sleep } = setup(batch({ input: { ecosystem: 'npm', name: 'jquery', version: '3.7.1' }, error: { code: 'VALIDATION_ERROR', message: '' } }));
+    await expect(createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep])).resolves.toEqual([
+      { verdict: 'unchecked', reason: 'VALIDATION_ERROR' },
+    ]);
+  });
+
   it('turns a per-item error into an unchecked result without failing the batch', async () => {
     const { fetch, sleep } = setup(
       batch(
@@ -132,7 +155,17 @@ describe('createClient', () => {
     const { fetch, sleep } = setup(json(429, {}, { 'X-RateLimit-Reset': reset }));
     const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
     expect(error).toBeInstanceOf(FiretruckError);
-    expect(error.message).toMatch(/rate limited .* Set the api-key input/);
+    expect(error.message).toContain(`until ${new Date(Number(reset) * 1000).toISOString()}`);
+    expect(error.message).toMatch(/Set the api-key input/);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('fails a rate limit that has no reset time without retrying', async () => {
+    const { fetch, sleep } = setup(json(429, { error: { message: 'slow down' } }), batch(clean));
+    const error = await createClient({ apiUrl: 'https://api.example.test', fetch, sleep })([dep]).catch((e) => e);
+    expect(error).toBeInstanceOf(FiretruckError);
+    expect(error.message).toBe('rate limited by the Firetruck API. Set the api-key input to get a higher limit.');
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
   });
 
@@ -144,6 +177,19 @@ describe('createClient', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
     const bodies = fetch.mock.calls.map((call) => (call[1] as RequestInit).body);
     expect(new Set(bodies).size).toBe(1);
+  });
+
+  it('retries a network error, then reports it with the cause', async () => {
+    const cause = new Error('connect ECONNREFUSED');
+    const failed = () => new TypeError('fetch failed', { cause });
+    const { fetch, sleep } = setup(failed(), failed());
+    const lookup = createClient({ apiUrl: 'https://api.example.test', fetch, sleep, maxAttempts: 2 });
+    await expect(lookup([dep])).rejects.toThrow(
+      'could not reach https://api.example.test/v1/packages/kevs/batch: TypeError: fetch failed (connect ECONNREFUSED)',
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0]![0]).toBe(1000);
   });
 
   it('stops retrying server errors after maxAttempts', async () => {

@@ -31,6 +31,18 @@ describe('npm', () => {
     expect(pairs(parsePackageLock(lock))).toEqual(['jquery@3.7.1', '@babel/core@7.24.0', 'jquery@1.12.4']);
   });
 
+  it('reads an npm alias from the package name in package-lock v2+', () => {
+    const lock = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'app', version: '1.0.0' },
+        'node_modules/foo': { name: 'bar', version: '1.2.3' },
+        'node_modules/@scope/alias': { name: '@real/pkg', version: '3.1.0' },
+      },
+    });
+    expect(pairs(parsePackageLock(lock))).toEqual(['bar@1.2.3', '@real/pkg@3.1.0']);
+  });
+
   it('reads package-lock v1 nested dependencies', () => {
     const lock = JSON.stringify({
       lockfileVersion: 1,

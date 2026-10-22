@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@actions/core';
-import { run, type Inputs } from '../src/main.ts';
+import { readInputs, run, type Inputs } from '../src/main.ts';
 import { FiretruckError, type LookupResult } from '../src/client.ts';
 import type { Dependency } from '../src/types.ts';
 
@@ -66,6 +66,53 @@ const packageLock = (deps: Record<string, string>) =>
     lockfileVersion: 3,
     packages: Object.fromEntries(Object.entries(deps).map(([name, version]) => [`node_modules/${name}`, { version }])),
   });
+
+describe('readInputs', () => {
+  const booleans = (overrides: Record<string, string> = {}) => {
+    vi.stubEnv('INPUT_FAIL-ON-KEV', overrides['fail-on-kev'] ?? 'true');
+    vi.stubEnv('INPUT_FAIL-ON-SKIPPED', overrides['fail-on-skipped'] ?? 'true');
+    vi.stubEnv('INPUT_FAIL-ON-UNCHECKED', overrides['fail-on-unchecked'] ?? 'false');
+  };
+
+  it('reads the flags, masks an API key, and drops blank path lines', () => {
+    booleans({ 'fail-on-kev': 'TRUE', 'fail-on-skipped': 'False', 'fail-on-unchecked': 'true' });
+    vi.stubEnv('INPUT_API-KEY', 'super-secret');
+    vi.stubEnv('INPUT_PATHS', 'package-lock.json\n   \n\nweb/*.txt');
+    vi.stubEnv('INPUT_CONCURRENCY', '4');
+    const secret = vi.spyOn(core, 'setSecret').mockImplementation(() => {});
+
+    expect(readInputs()).toEqual({
+      paths: ['package-lock.json', 'web/*.txt'],
+      apiKey: 'super-secret',
+      failOnKev: true,
+      failOnSkipped: false,
+      failOnUnchecked: true,
+      concurrency: 4,
+    });
+    expect(secret).toHaveBeenCalledWith('super-secret');
+    expect(secret).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults concurrency to 8 and does not mask an empty API key', () => {
+    booleans();
+    const secret = vi.spyOn(core, 'setSecret').mockImplementation(() => {});
+
+    expect(readInputs()).toMatchObject({ apiKey: '', concurrency: 8, paths: [], failOnSkipped: true, failOnUnchecked: false });
+    expect(secret).not.toHaveBeenCalled();
+  });
+
+  it('rejects a concurrency that is not a positive integer', () => {
+    for (const value of ['0', '-1', '1.5', 'no']) {
+      vi.stubEnv('INPUT_CONCURRENCY', value);
+      expect(() => readInputs(), value).toThrow(`concurrency must be a positive integer, got "${value}"`);
+    }
+  });
+
+  it('rejects a boolean input outside the YAML 1.2 set', () => {
+    booleans({ 'fail-on-skipped': 'yes' });
+    expect(() => readInputs()).toThrow(/fail-on-skipped/);
+  });
+});
 
 describe('run', () => {
   it('auto-detects lockfiles, dedupes across files, annotates, and fails on a yes verdict', async () => {
@@ -159,6 +206,27 @@ describe('run', () => {
     expect(summary).toContain('No dependencies matched');
     expect(summary).toContain('### Unverified (1)');
     expect(summary).toContain('| `org.example:lib` | 1.0 | maven | [CVE-2021-0002]');
+  });
+
+  it('orders confirmed findings by name, ahead of unverified ones', async () => {
+    await writeWorkspace({
+      'sbom.cdx.json': JSON.stringify({
+        bomFormat: 'CycloneDX',
+        components: [
+          { name: 'requests', version: '2.0.0', purl: 'pkg:pypi/requests@2.0.0' },
+          { name: 'lib', version: '1.0', purl: 'pkg:maven/org.example/lib@1.0' },
+          { name: 'jquery', version: '1.12.4', purl: 'pkg:npm/jquery@1.12.4' },
+        ],
+      }),
+    });
+
+    await run(inputs(), fakeLookup);
+
+    expect(JSON.parse(outputs().findings).map((f: { verdict: string; name: string }) => `${f.verdict}:${f.name}`)).toEqual([
+      'yes:jquery',
+      'yes:requests',
+      'unverified:org.example:lib',
+    ]);
   });
 
   it('lists confirmed findings before unverified ones', async () => {
@@ -292,6 +360,25 @@ describe('run', () => {
     expect(core.setFailed).not.toHaveBeenCalled();
   });
 
+  it('uses the plural when several dependencies were not checked', async () => {
+    await writeWorkspace({
+      'sbom.cdx.json': JSON.stringify({
+        bomFormat: 'CycloneDX',
+        components: [
+          { name: 'openssl', version: '1', purl: 'pkg:deb/debian/openssl@1' },
+          { name: 'zlib', version: '2', purl: 'pkg:deb/debian/zlib@2' },
+        ],
+      }),
+    });
+
+    await run(inputs({ failOnUnchecked: true }), fakeLookup);
+
+    expect(fakeLookup).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith('2 dependencies were not checked; the job summary lists them with the reason.');
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    expect(core.setFailed).toHaveBeenCalledWith('2 dependencies were not checked; the job summary lists them with the reason.');
+  });
+
   it('fails on unchecked dependencies only when fail-on-unchecked is true', async () => {
     await writeWorkspace({ 'package-lock.json': packageLock({ broken: '1.0.0', lodash: '4.17.21' }) });
 
@@ -353,6 +440,37 @@ empty=
     await writeWorkspace({ 'pom.xml': '<project/>\n' });
     await run(inputs({ paths: ['pom.xml'], failOnSkipped: false }), fakeLookup);
     expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not fail an empty lockfile when another file was checked', async () => {
+    await writeWorkspace({
+      'gradle.lockfile': '# comment\n\nempty=\n',
+      'package-lock.json': packageLock({ lodash: '4.17.21' }),
+    });
+
+    await expect(run(inputs(), fakeLookup)).resolves.toEqual([]);
+
+    expect(sentDependencies()).toEqual(['npm:lodash@4.17.21']);
+    expect(outputs()).toMatchObject({ 'checked-count': 1, 'vulnerable-count': 0 });
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it('fails a clean run when files are skipped, and lists them in the summary', async () => {
+    await writeWorkspace({
+      'package-lock.json': packageLock({ lodash: '4.17.21' }),
+      'bun.lock': '{not json',
+      'composer.lock': '{not json',
+    });
+
+    await run(inputs(), fakeLookup);
+
+    expect(outputs()).toMatchObject({ 'checked-count': 1, 'vulnerable-count': 0 });
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    expect(core.setFailed).toHaveBeenCalledWith('2 files were skipped: bun.lock, composer.lock');
+    const summary = await readFile(summaryFile, 'utf8');
+    expect(summary).toContain('<summary>Skipped files</summary>');
+    expect(summary).toContain('`bun.lock`');
+    expect(summary).toContain('`composer.lock`');
   });
 
   it('fails when a gradle.lockfile has no dependencies', async () => {
